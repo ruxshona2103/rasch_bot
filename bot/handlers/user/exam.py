@@ -1,7 +1,8 @@
 """III.5-bo'lim: Exam Mode (MVP). Savolni ko'rsatish, javob qabul qilish,
 Navigator, yakunlash. Taymer statik ko'rsatiladi (real-time soniyama-soniya
-yangilanmaydi — Telegram botlarda odatiy amaliyot). Rasch Engine hali
-qurilmagani uchun yakunlangach faqat "hisoblanmoqda" stub xabari beriladi.
+yangilanmaydi — Telegram botlarda odatiy amaliyot). Arxiv urinishlar
+yakunlanganda darhol MLE/klassik ball ko'rsatadi (core.rasch); jonli
+urinishlar admin "Yakunlash" bosgach guruh bo'lib hisoblanadi.
 """
 
 from datetime import datetime, timedelta
@@ -21,6 +22,7 @@ from bot.keyboards.exam import (
 from bot.keyboards.main_menu import main_menu_keyboard
 from bot.states.exam import Exam
 from core.answer_key import normalize_open_answer
+from core.rasch import score_archive_attempt
 from db.queries import (
     auto_close_attempt,
     create_attempt,
@@ -213,14 +215,25 @@ async def ask_finish(callback: CallbackQuery, session: AsyncSession, state: FSMC
 async def finish_yes(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
     data = await state.get_data()
     await finish_attempt(session, data["attempt_id"])
+    test = await get_test(session, data["test_id"])
     await state.clear()
     await callback.answer()
-    await callback.message.answer(
-        "✅ Test yakunlandi!\n"
-        "⚠️ Natijalar hisoblanmoqda — Rasch Engine hali ishlab chiqilmoqda, "
-        "natijalar tez orada e'lon qilinadi.",
-        reply_markup=main_menu_keyboard(),
-    )
+
+    if test.mode == "arxiv":
+        ball, grade = await score_archive_attempt(session, data["attempt_id"])
+        await callback.message.answer(
+            "✅ Test yakunlandi!\n"
+            f"🏆 Ball: {ball} / 75 | 🎖 Daraja: {grade or 'Baholanmadi'}\n"
+            "🏋️ Bu mashq rejimi — ball jonli sinovda kalibrlangan qiyinlik "
+            "darajalari asosida taxminiy hisoblanadi, rasmiy natija emas.",
+            reply_markup=main_menu_keyboard(),
+        )
+    else:
+        await callback.message.answer(
+            "✅ Test yakunlandi!\n"
+            "⏳ Natijalar test admin tomonidan yakunlangach e'lon qilinadi.",
+            reply_markup=main_menu_keyboard(),
+        )
 
 
 @router.callback_query(Exam.taking, F.data == "examfinishno")

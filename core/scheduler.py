@@ -75,23 +75,31 @@ async def close_test(bot: Bot, test_id: int) -> None:
 
 
 async def run_rasch(bot: Bot, test_id: int) -> None:
+    from core.rasch import finalize_jonli_test
+
     async with async_session() as session:
         test = await get_test(session, test_id)
         if test is None:
             return
-        changed = await mark_test_status(
-            session, test_id, _ACTIVE_STATUSES, "yakunlangan", calibrated=True
-        )
-        if not changed:
-            return
+
+        results = await finalize_jonli_test(session, test_id)
+        test = await get_test(session, test_id)
+        total = len(results)
+        lookup = {user_pk: (ball, grade, rank) for user_pk, ball, grade, rank in results}
+
         for user in await list_purchasers(session, test_id):
+            info = lookup.get(user.user_pk)
+            if info is None:
+                continue
+            ball, grade, rank = info
             await _notify(
                 bot,
                 user.telegram_id,
-                f"📊 \"{test.title}\" yakunlandi.\n"
-                "⚠️ Rasch Engine hali ishlab chiqilmoqda — natijalar tez orada e'lon qilinadi.",
+                f"🏆 \"{test.title}\" NATIJANGIZ\n"
+                f"📊 Ball: {ball} / 75 | 🎖 Daraja: {grade or 'Baholanmadi'}\n"
+                f"🥇 Reyting: {total} tadan {rank}-o'rin",
             )
-    logger.info("Rasch bosqichi (stub) yakunlandi: test_id=%s", test_id)
+    logger.info("Rasch bosqichi yakunlandi: test_id=%s, %d natija", test_id, total)
 
 
 def _job_id(kind: str, test_id: int) -> str:

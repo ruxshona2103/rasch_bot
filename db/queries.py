@@ -267,15 +267,12 @@ async def set_test_schedule(session: AsyncSession, test_id: int, start_at, deadl
 
 
 async def finish_test_manually(session: AsyncSession, test_id: int) -> bool:
-    """🆕 Admin 'jonli' testni istalgan payt qo'lda yakunlaydi ('🏁 Yakunlash').
-    Rasch Engine hali yo'qligi uchun to'g'ridan-to'g'ri 'yakunlangan'ga o'tadi."""
-    changed = await mark_test_status(
+    """🆕 Admin 'jonli' testni istalgan payt qo'lda yakunlaydi ('🏁 Yakunlash') —
+    faqat 'hisoblanmoqda'ga o'tkazadi. Haqiqiy Rasch/klassik hisob-kitob
+    core.rasch.finalize_jonli_test orqali alohida chaqiriladi (test_manage.py)."""
+    return await mark_test_status(
         session, test_id, ("jonli_davom",), "hisoblanmoqda", deadline_at=func.now()
     )
-    if not changed:
-        return False
-    await mark_test_status(session, test_id, ("hisoblanmoqda",), "yakunlangan", calibrated=True)
-    return True
 
 
 async def cancel_test(session: AsyncSession, test_id: int, admin_id: int) -> None:
@@ -453,4 +450,38 @@ async def auto_close_attempt(session: AsyncSession, attempt_id: int) -> None:
         .where(Attempt.attempt_id == attempt_id, Attempt.status == "davom_etmoqda")
         .values(status="vaqt_tugagan", finished_at=func.now())
     )
+    await session.commit()
+
+
+# ---------------- Rasch Engine (V-bo'lim) ----------------
+
+
+async def list_scoreable_attempts(
+    session: AsyncSession, test_id: int, statuses: tuple[str, ...] = ("yakunlangan", "vaqt_tugagan")
+) -> list[Attempt]:
+    result = await session.execute(
+        select(Attempt).where(Attempt.test_id == test_id, Attempt.status.in_(statuses))
+    )
+    return list(result.scalars().all())
+
+
+async def set_question_b_difficulty(session: AsyncSession, question_id: int, b: float | None) -> None:
+    await session.execute(
+        update(Question).where(Question.question_id == question_id).values(b_difficulty=b)
+    )
+    await session.commit()
+
+
+async def set_attempt_result(
+    session: AsyncSession,
+    attempt_id: int,
+    theta: float | None,
+    ball_75: float,
+    grade: str | None,
+    rank_position: int | None = None,
+) -> None:
+    values = {"theta": theta, "ball_75": ball_75, "grade": grade}
+    if rank_position is not None:
+        values["rank_position"] = rank_position
+    await session.execute(update(Attempt).where(Attempt.attempt_id == attempt_id).values(**values))
     await session.commit()

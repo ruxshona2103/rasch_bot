@@ -13,6 +13,7 @@ from bot.filters.admin import IsAdmin
 from bot.keyboards.common import cancel_inline_keyboard
 from bot.keyboards.test_manage import cancel_confirm_keyboard, test_actions_keyboard
 from bot.states.payment import TestManage
+from core.rasch import finalize_jonli_test
 from core.scheduler import schedule_test
 from db.queries import (
     cancel_test,
@@ -149,19 +150,33 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
         await callback.answer("⚠️ Bu testni hozir yakunlab bo'lmaydi.", show_alert=True)
         return
 
+    await callback.answer("⏳ Natijalar hisoblanmoqda...")
+
+    results = await finalize_jonli_test(session, test_id)
     test = await get_test(session, test_id)
+    total = len(results)
+    lookup = {user_pk: (ball, grade, rank) for user_pk, ball, grade, rank in results}
+
     for user in await list_purchasers(session, test_id):
+        info = lookup.get(user.user_pk)
+        if info is None:
+            continue
+        ball, grade, rank = info
         try:
             await callback.bot.send_message(
                 user.telegram_id,
-                f"🏁 \"{test.title}\" yakunlandi.\n"
-                "⚠️ Rasch Engine hali ishlab chiqilmoqda — natijalar tez orada e'lon qilinadi.",
+                f"🏆 \"{test.title}\" NATIJANGIZ\n"
+                f"📊 Ball: {ball} / 75 | 🎖 Daraja: {grade or 'Baholanmadi'}\n"
+                f"🥇 Reyting: {total} tadan {rank}-o'rin",
             )
         except Exception:
             continue
 
-    await callback.message.edit_text(_test_text(test), reply_markup=test_actions_keyboard(test))
-    await callback.answer("✅ Test yakunlandi")
+    method = "Rasch (JMLE)" if test.calibrated else "klassik %"
+    await callback.message.edit_text(
+        f"{_test_text(test)}\n\n✅ {total} ta natija hisoblandi ({method}).",
+        reply_markup=test_actions_keyboard(test),
+    )
 
 
 @router.callback_query(F.data.startswith("testvideo:"))
