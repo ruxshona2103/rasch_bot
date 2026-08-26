@@ -145,3 +145,11 @@ class Outbox(Base):
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String(10), default="navbatda")  # navbatda | yuborildi | xato
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+# 🆕 Global sozlamalar (kalit-qiymat) — masalan marketing e'lonlari uchun logotip file_id
+class BotSetting(Base):
+    __tablename__ = "bot_settings"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)

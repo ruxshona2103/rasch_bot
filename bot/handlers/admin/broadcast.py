@@ -16,8 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.filters.admin import IsAdmin
 from bot.keyboards.admin_test import yes_no_keyboard
 from bot.keyboards.common import cancel_inline_keyboard
-from bot.states.broadcast import Broadcast
-from db.queries import list_all_user_telegram_ids, mark_user_blocked
+from bot.states.broadcast import Broadcast, MarketingLogo
+from core.marketing import MARKETING_LOGO_KEY
+from db.queries import list_all_user_telegram_ids, mark_user_blocked, set_setting
 
 router = Router(name="admin_broadcast")
 router.message.filter(IsAdmin())
@@ -100,3 +101,30 @@ async def send_broadcast(callback: CallbackQuery, state: FSMContext, session: As
 
     await callback.message.answer(f"✅ {sent} yetdi, 🚫 {blocked} bloklagan")
     await callback.answer()
+
+
+# ---------------- 🆕 Marketing rasm (yangi jonli test e'lonlari uchun) ----------------
+
+
+@router.message(F.text == "🖼 Marketing rasm")
+async def ask_marketing_logo(message: Message, state: FSMContext) -> None:
+    await message.answer(
+        "🖼 Yangi jonli test e'lonlarida ishlatiladigan rasmni (logotip) yuboring.\n"
+        "Bu rasm har safar yangi jonli test yaratilganda barcha foydalanuvchilarga "
+        "avtomatik ketadigan e'lon xabariga qo'yiladi.",
+        reply_markup=cancel_inline_keyboard(),
+    )
+    await state.set_state(MarketingLogo.waiting_photo)
+
+
+@router.message(MarketingLogo.waiting_photo, F.photo)
+async def save_marketing_logo(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    file_id = message.photo[-1].file_id
+    await set_setting(session, MARKETING_LOGO_KEY, file_id)
+    await state.clear()
+    await message.answer("✅ Marketing rasmi saqlandi. Endi yangi jonli testlar shu rasm bilan e'lon qilinadi.")
+
+
+@router.message(MarketingLogo.waiting_photo)
+async def save_marketing_logo_invalid(message: Message) -> None:
+    await message.answer("❗️ Iltimos, rasm yuboring:", reply_markup=cancel_inline_keyboard())

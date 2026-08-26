@@ -26,6 +26,7 @@ from bot.keyboards.admin_test import (
 from bot.keyboards.test_manage import test_actions_keyboard
 from bot.states.admin_test import TestCreate
 from core.answer_key import parse_answer_key, qtype_for_answer
+from core.marketing import announce_new_test
 from core.pdf_parser import pdf_to_png_pages
 from core.storage import save_question_png, test_media_dir
 from db.models import Question, Test
@@ -409,6 +410,11 @@ async def final_confirm_yes(callback: CallbackQuery, state: FSMContext, session:
         await callback.message.answer(
             "Testni qachon boshlaymiz?", reply_markup=test_actions_keyboard(test)
         )
+
+        question_count = await count_questions(session, data["test_id"])
+        await callback.message.answer("📢 Barcha foydalanuvchilarga e'lon yuborilmoqda...")
+        sent, blocked = await announce_new_test(callback.bot, session, test, question_count)
+        await callback.message.answer(f"✅ E'lon {sent} kishiga yetdi, 🚫 {blocked} bloklagan.")
 
     await callback.message.answer("👨‍💼 Admin panel:", reply_markup=admin_panel_keyboard())
     await state.clear()

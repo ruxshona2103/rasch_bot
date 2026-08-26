@@ -1,4 +1,4 @@
-"""Bazani birinchi marta tayyorlash: 9 jadval + public_id_seq.
+"""Bazani birinchi marta tayyorlash: 10 jadval + public_id_seq.
 
 Ishga tushirish: python -m scripts.init_db
 Keyinchalik sxema o'zgarsa Alembic migratsiyalariga o'tish tavsiya etiladi —
@@ -15,7 +15,7 @@ async def init_models() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(lambda sync_conn: public_id_seq.create(sync_conn, checkfirst=True))
-    print("✅ Baza tayyor: 9 jadval + public_id_seq")
+    print("✅ Baza tayyor: 10 jadval + public_id_seq")
 
 
 if __name__ == "__main__":

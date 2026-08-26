@@ -7,6 +7,7 @@ def admin_panel_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="➕ Yangi test"), KeyboardButton(text="📋 Testlar")],
             [KeyboardButton(text="💳 To'lovlar"), KeyboardButton(text="✉️ Apellyatsiyalar")],
             [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="📢 E'lon yuborish")],
+            [KeyboardButton(text="🖼 Marketing rasm")],
             [KeyboardButton(text="⬅️ Foydalanuvchi rejimiga qaytish")],
         ],
         resize_keyboard=True,

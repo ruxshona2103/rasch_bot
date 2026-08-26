@@ -4,7 +4,18 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import AdminLog, Answer, Attempt, Payment, Purchase, Question, Test, User, public_id_seq
+from db.models import (
+    AdminLog,
+    Answer,
+    Attempt,
+    BotSetting,
+    Payment,
+    Purchase,
+    Question,
+    Test,
+    User,
+    public_id_seq,
+)
 
 
 async def get_user_by_telegram_id(session: AsyncSession, telegram_id: int) -> User | None:
@@ -370,6 +381,27 @@ async def list_all_user_telegram_ids(session: AsyncSession) -> list[tuple[int, i
         select(User.user_pk, User.telegram_id).where(User.is_blocked.is_(False))
     )
     return [tuple(row) for row in result.all()]
+
+
+async def list_all_active_users(session: AsyncSession) -> list[User]:
+    """Marketing e'lonlari uchun — bloklanmagan barcha foydalanuvchilar (to'liq obyekt, ism kerak)."""
+    result = await session.execute(select(User).where(User.is_blocked.is_(False)))
+    return list(result.scalars().all())
+
+
+# ---------------- Global sozlamalar (bot_settings) ----------------
+
+
+async def get_setting(session: AsyncSession, key: str) -> str | None:
+    result = await session.execute(select(BotSetting.value).where(BotSetting.key == key))
+    return result.scalar_one_or_none()
+
+
+async def set_setting(session: AsyncSession, key: str, value: str) -> None:
+    stmt = pg_insert(BotSetting).values(key=key, value=value)
+    stmt = stmt.on_conflict_do_update(index_elements=[BotSetting.key], set_={"value": value})
+    await session.execute(stmt)
+    await session.commit()
 
 
 async def mark_user_blocked(session: AsyncSession, user_pk: int) -> None:
