@@ -66,7 +66,8 @@ async def approve(callback: CallbackQuery, session: AsyncSession) -> None:
     test = await get_test(session, payment.test_id)
 
     await callback.message.edit_caption(
-        caption=(callback.message.caption or "") + "\n\n✅ TASDIQLANDI", reply_markup=None
+        caption=(callback.message.caption or "") + f"\n\n✅ TASDIQLANDI | 🎫 ID: {user.public_id}",
+        reply_markup=None,
     )
 
     try:
