@@ -4,6 +4,7 @@ from aiogram import F, Router
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bot.config import settings
 from db.queries import (
     count_attempts_by_kind,
     get_test,
@@ -80,9 +81,13 @@ async def show_videos(message: Message, session: AsyncSession) -> None:
 
 @router.message(F.text == "ℹ️ Yordam / Aloqa")
 async def show_help(message: Message) -> None:
+    contact_parts = [p for p in (settings.ADMIN_CONTACT_USERNAME, settings.ADMIN_PHONE) if p]
+    contact_line = (
+        f"\n\n📞 Murojaat uchun: {' | '.join(contact_parts)}" if contact_parts else ""
+    )
     await message.answer(
         "ℹ️ Yordam / Aloqa\n\n"
         "Bu — norasmiy mock-test botidir, Milliy sertifikat rasmiy tashkilotiga "
         "(BBA) aloqasi yo'q.\n\n"
-        "Savol yoki muammo bo'lsa, admin bilan bevosita bog'laning."
+        "Savol yoki muammo bo'lsa, admin bilan bevosita bog'laning." + contact_line
     )

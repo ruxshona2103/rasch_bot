@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     CARD_NUMBER: str
     CARD_OWNER: str
 
+    # Chek yuborilgandan keyin murojaat/qo'shimcha ma'lumot uchun ko'rsatiladigan aloqa
+    ADMIN_PHONE: str = ""
+    ADMIN_CONTACT_USERNAME: str = ""
+
     TIMEZONE: str = "Asia/Tashkent"
 
     DB_HOST: str

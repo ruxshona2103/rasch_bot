@@ -25,6 +25,17 @@ def _fmt_price(price: int) -> str:
     return f"{price:,} so'm".replace(",", " ")
 
 
+def _contact_line() -> str:
+    parts = []
+    if settings.ADMIN_CONTACT_USERNAME:
+        parts.append(settings.ADMIN_CONTACT_USERNAME)
+    if settings.ADMIN_PHONE:
+        parts.append(settings.ADMIN_PHONE)
+    if not parts:
+        return ""
+    return f"\n\n❓ Savollar yoki qo'shimcha ma'lumot uchun: {' | '.join(parts)}"
+
+
 def _format_test_card(test) -> str:
     emoji = "🔴" if test.mode == "jonli" else "📚"
     if test.mode == "jonli":
@@ -135,7 +146,9 @@ async def process_receipt(message: Message, state: FSMContext, session: AsyncSes
     )
 
     await state.clear()
-    await message.answer("✅ Chekingiz qabul qilindi. Admin 30 daqiqa ichida tekshiradi.")
+    await message.answer(
+        "✅ Chekingiz qabul qilindi. Admin 30 daqiqa ichida tekshiradi." + _contact_line()
+    )
     await _notify_admins(message, payment, user, test, duplicate)
 
 
