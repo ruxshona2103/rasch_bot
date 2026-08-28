@@ -21,7 +21,7 @@ from bot.keyboards.exam import (
 )
 from bot.keyboards.main_menu import main_menu_keyboard
 from bot.states.exam import Exam
-from core.answer_key import normalize_open_answer
+from core.answer_key import is_valid_numeric_answer, normalize_open_answer
 from core.rasch import score_archive_attempt
 from db.queries import (
     auto_close_attempt,
@@ -188,6 +188,16 @@ async def input_open_answer(message: Message, session: AsyncSession, state: FSMC
     if question.qtype != "ochiq":
         await message.answer("❗️ Bu savol uchun tugmalardan birini tanlang.")
         return
+
+    # 🆕 So'z bilan yozilgan javobni ("o'n ikki") umuman qabul qilmaymiz —
+    # aks holda o'quvchi nima uchun noto'g'ri chiqqanini hech qachon bilolmas edi.
+    if not is_valid_numeric_answer(message.text):
+        await message.answer(
+            "❗️ Javobni FAQAT RAQAMDA yozing (masalan: 12, -3,5 yoki 1/2).\n"
+            "So'z bilan yozilgan javob (masalan \"o'n ikki\") qabul qilinmaydi — qayta yozing:"
+        )
+        return
+
     answer = normalize_open_answer(message.text)
     await upsert_answer(session, data["attempt_id"], question.question_id, answer)
     await _render_question(message, session, state)
