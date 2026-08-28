@@ -13,11 +13,13 @@ from bot.filters.admin import IsAdmin
 from bot.keyboards.common import cancel_inline_keyboard
 from bot.keyboards.test_manage import cancel_confirm_keyboard, delete_confirm_keyboard, test_actions_keyboard
 from bot.states.payment import TestManage
+from core.marketing import announce_schedule
 from core.rasch import finalize_jonli_test
 from core.scheduler import schedule_test
 from db.queries import (
     archive_finished_test,
     cancel_test,
+    count_questions,
     delete_test_completely,
     finish_test_manually,
     get_test,
@@ -116,8 +118,14 @@ async def process_schedule_time(
 
     await message.answer(
         f"✅ Vaqt belgilandi: {start_at:%d-%m %H:%M} (Toshkent vaqti). "
-        "Test shu vaqtda avtomatik boshlanadi.",
+        "Test shu vaqtda avtomatik boshlanadi.\n📢 Barcha foydalanuvchilarga e'lon yuborilmoqda...",
         reply_markup=test_actions_keyboard(test),
+    )
+
+    question_count = await count_questions(session, test_id)
+    sent, blocked = await announce_schedule(message.bot, session, test, question_count)
+    await message.answer(
+        f"✅ Vaqt e'loni {sent} kishiga yetdi, 🚫 {blocked} bloklagan.",
     )
 
 

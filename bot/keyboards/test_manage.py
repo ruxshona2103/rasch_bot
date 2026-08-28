@@ -27,6 +27,13 @@ def test_actions_keyboard(test) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🎥 Video qo'shish", callback_data=f"testvideo:{test.test_id}")]
     )
 
+    # 🆕 Savol qo'shish/o'zgartirish/o'chirish — jonli_davom/hisoblanmoqda'dan
+    # tashqari har doim (arxivdagi testlar uchun ham) ochiq
+    if test.status not in ("jonli_davom", "hisoblanmoqda"):
+        rows.append(
+            [InlineKeyboardButton(text="✏️ Tahrirlash", callback_data=f"testedit:{test.test_id}")]
+        )
+
     # 🆕 Yakunlangan jonli test: arxivga ko'chirish yoki butunlay o'chirish
     if test.mode == "jonli" and test.status == "yakunlangan":
         rows.append(

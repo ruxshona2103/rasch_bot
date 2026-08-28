@@ -101,6 +101,49 @@ async def count_questions(session: AsyncSession, test_id: int) -> int:
     return result.scalar_one()
 
 
+async def update_question(
+    session: AsyncSession,
+    question_id: int,
+    qtype: str,
+    correct_answer: str,
+    text: str | None,
+    image_file_id: str | None,
+) -> None:
+    """🆕 Mavjud savolni yangi kontent bilan almashtiradi (order_num o'zgarmaydi)."""
+    await session.execute(
+        update(Question)
+        .where(Question.question_id == question_id)
+        .values(qtype=qtype, correct_answer=correct_answer, text=text, image_file_id=image_file_id)
+    )
+    await session.commit()
+
+
+async def delete_question_and_renumber(session: AsyncSession, test_id: int, order_num: int) -> bool:
+    """🆕 Savolni o'chiradi (unga bog'liq javoblar bilan) va qolgan savollarning
+    order_num'ini uzluksiz (1..N) qilib qayta raqamlaydi -- Exam Mode'dagi
+    Navigator pozitsion indekslash bilan ishlagani uchun bu shart."""
+    result = await session.execute(
+        select(Question).where(Question.test_id == test_id, Question.order_num == order_num)
+    )
+    question = result.scalar_one_or_none()
+    if question is None:
+        return False
+
+    await session.execute(delete(Answer).where(Answer.question_id == question.question_id))
+    await session.execute(delete(Question).where(Question.question_id == question.question_id))
+
+    remaining_result = await session.execute(
+        select(Question)
+        .where(Question.test_id == test_id, Question.order_num > order_num)
+        .order_by(Question.order_num)
+    )
+    for remaining_question in remaining_result.scalars().all():
+        remaining_question.order_num -= 1
+
+    await session.commit()
+    return True
+
+
 async def get_test(session: AsyncSession, test_id: int) -> Test | None:
     result = await session.execute(select(Test).where(Test.test_id == test_id))
     return result.scalar_one_or_none()
@@ -423,6 +466,17 @@ async def list_all_user_telegram_ids(session: AsyncSession) -> list[tuple[int, i
 async def list_all_active_users(session: AsyncSession) -> list[User]:
     """Marketing e'lonlari uchun — bloklanmagan barcha foydalanuvchilar (to'liq obyekt, ism kerak)."""
     result = await session.execute(select(User).where(User.is_blocked.is_(False)))
+    return list(result.scalars().all())
+
+
+async def list_users_without_purchase(session: AsyncSession, test_id: int) -> list[User]:
+    """🆕 Shu testga hali chiptasi yo'q, bloklanmagan foydalanuvchilar —
+    shoshiltiruvchi (-5 daq) marketing eslatmasi uchun (allaqachon to'lagan
+    userlarga "shoshiling to'lang" deb yuborish noo'rin)."""
+    purchased_subq = select(Purchase.user_pk).where(Purchase.test_id == test_id)
+    result = await session.execute(
+        select(User).where(User.is_blocked.is_(False), User.user_pk.not_in(purchased_subq))
+    )
     return list(result.scalars().all())
 
 

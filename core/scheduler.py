@@ -44,6 +44,19 @@ async def send_reminder(bot: Bot, test_id: int) -> None:
             await _notify(bot, user.telegram_id, f"🔔 ID: {user.public_id} — 30 daqiqa qoldi! \"{test.title}\"")
 
 
+async def send_urgency_reminder(bot: Bot, test_id: int) -> None:
+    """🆕 Boshlanishdan 5 daqiqa oldin — hali chiptasi yo'q foydalanuvchilarga
+    marketing rasmi bilan shoshiltiruvchi eslatma (III.4/V-bo'lim marketing)."""
+    from core.marketing import announce_urgency
+
+    async with async_session() as session:
+        test = await get_test(session, test_id)
+        if test is None or test.status != "rejalashtirilgan":
+            return
+        sent, blocked = await announce_urgency(bot, session, test)
+    logger.info("Shoshiltiruvchi eslatma: test_id=%s, sent=%s, blocked=%s", test_id, sent, blocked)
+
+
 async def open_test(bot: Bot, test_id: int) -> None:
     async with async_session() as session:
         test = await get_test(session, test_id)
@@ -129,6 +142,16 @@ def schedule_test(scheduler: AsyncIOScheduler, bot: Bot, test) -> None:
                 run_date=reminder_time,
                 args=[bot, test.test_id],
                 id=_job_id("reminder", test.test_id),
+                replace_existing=True,
+            )
+        urgency_time = test.start_at - timedelta(minutes=5)
+        if urgency_time > now:
+            scheduler.add_job(
+                send_urgency_reminder,
+                "date",
+                run_date=urgency_time,
+                args=[bot, test.test_id],
+                id=_job_id("urgency", test.test_id),
                 replace_existing=True,
             )
         scheduler.add_job(
