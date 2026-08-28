@@ -18,6 +18,7 @@ from bot.keyboards.admin_test import yes_no_keyboard
 from bot.keyboards.common import cancel_inline_keyboard
 from bot.states.broadcast import Broadcast, MarketingLogo
 from core.marketing import MARKETING_LOGO_KEY
+from core.telegram_media import document_to_photo_file_id, is_image_document
 from db.queries import list_all_user_telegram_ids, mark_user_blocked, set_setting
 
 router = Router(name="admin_broadcast")
@@ -36,6 +37,20 @@ async def start_broadcast(message: Message, state: FSMContext) -> None:
 @router.message(Broadcast.waiting_content, F.photo)
 async def process_photo_content(message: Message, state: FSMContext) -> None:
     await state.update_data(photo_file_id=message.photo[-1].file_id, text=message.caption or "")
+    await _show_preview(message, state)
+
+
+@router.message(Broadcast.waiting_content, F.document)
+async def process_document_content(message: Message, state: FSMContext) -> None:
+    document = message.document
+    if not await is_image_document(document):
+        await message.answer(
+            "❗️ Faqat rasm formatidagi fayl qabul qilinadi (PNG, JPG va h.k.). Qayta yuboring:",
+            reply_markup=cancel_inline_keyboard(),
+        )
+        return
+    file_id = await document_to_photo_file_id(message, document)
+    await state.update_data(photo_file_id=file_id, text=message.caption or "")
     await _show_preview(message, state)
 
 
@@ -120,6 +135,21 @@ async def ask_marketing_logo(message: Message, state: FSMContext) -> None:
 @router.message(MarketingLogo.waiting_photo, F.photo)
 async def save_marketing_logo(message: Message, state: FSMContext, session: AsyncSession) -> None:
     file_id = message.photo[-1].file_id
+    await set_setting(session, MARKETING_LOGO_KEY, file_id)
+    await state.clear()
+    await message.answer("✅ Marketing rasmi saqlandi. Endi yangi jonli testlar shu rasm bilan e'lon qilinadi.")
+
+
+@router.message(MarketingLogo.waiting_photo, F.document)
+async def save_marketing_logo_document(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    document = message.document
+    if not await is_image_document(document):
+        await message.answer(
+            "❗️ Faqat rasm formatidagi fayl qabul qilinadi (PNG, JPG va h.k.). Qayta yuboring:",
+            reply_markup=cancel_inline_keyboard(),
+        )
+        return
+    file_id = await document_to_photo_file_id(message, document)
     await set_setting(session, MARKETING_LOGO_KEY, file_id)
     await state.clear()
     await message.answer("✅ Marketing rasmi saqlandi. Endi yangi jonli testlar shu rasm bilan e'lon qilinadi.")

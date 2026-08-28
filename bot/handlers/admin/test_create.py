@@ -28,6 +28,7 @@ from bot.states.admin_test import TestCreate
 from core.answer_key import parse_answer_key, qtype_for_answer
 from core.marketing import announce_new_test
 from core.pdf_parser import pdf_to_png_pages
+from core.telegram_media import document_to_photo_file_id, is_image_document
 from core.storage import save_question_png, test_media_dir
 from db.models import Question, Test
 from db.queries import add_question, count_questions, create_test, get_test
@@ -314,21 +315,15 @@ async def manual_process_content_photo(message: Message, state: FSMContext) -> N
 @router.message(TestCreate.waiting_manual_content, F.document)
 async def manual_process_content_document(message: Message, state: FSMContext) -> None:
     document = message.document
-    mime = document.mime_type or ""
-    if not mime.startswith("image/"):
+    if not await is_image_document(document):
         await message.answer(
             "❗️ Faqat rasm formatidagi fayl qabul qilinadi (PNG, JPG va h.k.). Qayta yuboring:",
             reply_markup=cancel_inline_keyboard(),
         )
         return
 
-    # Fayl (document) sifatida kelgan rasmni oddiy photo'ga aylantirib olamiz —
-    # shunda Exam Mode'da bir xil (send_photo) usulda ko'rsatiladi.
-    file_bytes_io = await message.bot.download(document)
-    photo_msg = await message.answer_photo(
-        photo=BufferedInputFile(file_bytes_io.read(), filename=document.file_name or "savol.png")
-    )
-    await state.update_data(current_text=None, current_image_file_id=photo_msg.photo[-1].file_id)
+    file_id = await document_to_photo_file_id(message, document)
+    await state.update_data(current_text=None, current_image_file_id=file_id)
     await _after_content(message, state)
 
 
