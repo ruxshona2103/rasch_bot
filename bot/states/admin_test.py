@@ -18,6 +18,7 @@ class TestCreate(StatesGroup):
     # Qo'lda kiritish usuli
     waiting_manual_qtype = State()
     waiting_manual_content = State()
+    waiting_manual_options = State()
     waiting_manual_answer = State()
     waiting_manual_next = State()
 

@@ -297,7 +297,9 @@ async def manual_process_qtype(callback: CallbackQuery, state: FSMContext) -> No
     await state.update_data(current_qtype=qtype)
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(
-        "Savol matnini yoki rasmini yuboring:", reply_markup=cancel_inline_keyboard()
+        "Savol matnini yoki rasmini yuboring (rasmni ham 📷 photo, ham 📎 file "
+        "sifatida — istalgan formatda: PNG, JPG va h.k. — yuborishingiz mumkin):",
+        reply_markup=cancel_inline_keyboard(),
     )
     await state.set_state(TestCreate.waiting_manual_content)
     await callback.answer()
@@ -306,18 +308,71 @@ async def manual_process_qtype(callback: CallbackQuery, state: FSMContext) -> No
 @router.message(TestCreate.waiting_manual_content, F.photo)
 async def manual_process_content_photo(message: Message, state: FSMContext) -> None:
     await state.update_data(current_text=None, current_image_file_id=message.photo[-1].file_id)
-    await _ask_manual_answer(message, state)
+    await _after_content(message, state)
+
+
+@router.message(TestCreate.waiting_manual_content, F.document)
+async def manual_process_content_document(message: Message, state: FSMContext) -> None:
+    document = message.document
+    mime = document.mime_type or ""
+    if not mime.startswith("image/"):
+        await message.answer(
+            "❗️ Faqat rasm formatidagi fayl qabul qilinadi (PNG, JPG va h.k.). Qayta yuboring:",
+            reply_markup=cancel_inline_keyboard(),
+        )
+        return
+
+    # Fayl (document) sifatida kelgan rasmni oddiy photo'ga aylantirib olamiz —
+    # shunda Exam Mode'da bir xil (send_photo) usulda ko'rsatiladi.
+    file_bytes_io = await message.bot.download(document)
+    photo_msg = await message.answer_photo(
+        photo=BufferedInputFile(file_bytes_io.read(), filename=document.file_name or "savol.png")
+    )
+    await state.update_data(current_text=None, current_image_file_id=photo_msg.photo[-1].file_id)
+    await _after_content(message, state)
 
 
 @router.message(TestCreate.waiting_manual_content, F.text)
 async def manual_process_content_text(message: Message, state: FSMContext) -> None:
     await state.update_data(current_text=message.text.strip(), current_image_file_id=None)
-    await _ask_manual_answer(message, state)
+    await _after_content(message, state)
 
 
 @router.message(TestCreate.waiting_manual_content)
 async def manual_process_content_invalid(message: Message) -> None:
-    await message.answer("❗️ Matn yoki rasm yuboring:", reply_markup=cancel_inline_keyboard())
+    await message.answer(
+        "❗️ Matn yoki rasm (photo yoki file) yuboring:", reply_markup=cancel_inline_keyboard()
+    )
+
+
+async def _after_content(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    if data["current_qtype"] == "yopiq":
+        await message.answer(
+            "Endi javob variantlarini kiriting, masalan:\nA) 24\nB) 36\nC) 12\nD) 8",
+            reply_markup=cancel_inline_keyboard(),
+        )
+        await state.set_state(TestCreate.waiting_manual_options)
+    else:
+        await _ask_manual_answer(message, state)
+
+
+@router.message(TestCreate.waiting_manual_options, F.text)
+async def manual_process_options(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    options_text = message.text.strip()
+    existing_text = data.get("current_text")
+    combined_text = f"{existing_text}\n\n{options_text}" if existing_text else options_text
+    await state.update_data(current_text=combined_text)
+    await _ask_manual_answer(message, state)
+
+
+@router.message(TestCreate.waiting_manual_options)
+async def manual_process_options_invalid(message: Message) -> None:
+    await message.answer(
+        "❗️ Variantlarni matn ko'rinishida kiriting (masalan: A) 24  B) 36  C) 12  D) 8):",
+        reply_markup=cancel_inline_keyboard(),
+    )
 
 
 async def _ask_manual_answer(message: Message, state: FSMContext) -> None:
