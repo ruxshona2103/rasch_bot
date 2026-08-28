@@ -11,12 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.config import settings
 from bot.filters.admin import IsAdmin
 from bot.keyboards.common import cancel_inline_keyboard
-from bot.keyboards.test_manage import cancel_confirm_keyboard, test_actions_keyboard
+from bot.keyboards.test_manage import cancel_confirm_keyboard, delete_confirm_keyboard, test_actions_keyboard
 from bot.states.payment import TestManage
 from core.rasch import finalize_jonli_test
 from core.scheduler import schedule_test
 from db.queries import (
+    archive_finished_test,
     cancel_test,
+    delete_test_completely,
     finish_test_manually,
     get_test,
     list_all_tests,
@@ -230,4 +232,79 @@ async def cancel_yes(callback: CallbackQuery, session: AsyncSession) -> None:
 
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer("✅ Test bekor qilindi, xabar yuborildi.")
+    await callback.answer()
+
+
+# ---------------- 🆕 Arxivga ko'chirish ----------------
+
+
+@router.callback_query(F.data.startswith("testarchive:"))
+async def ask_archive_price(callback: CallbackQuery, state: FSMContext) -> None:
+    test_id = int(callback.data.split(":")[1])
+    await state.update_data(archive_test_id=test_id)
+    await state.set_state(TestManage.waiting_archive_price)
+    await callback.message.answer(
+        "📥 Arxivga ko'chirilgach qanday narxda sotilsin? (so'mda, faqat raqam):",
+        reply_markup=cancel_inline_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.message(TestManage.waiting_archive_price, F.text.regexp(r"^\d+$"))
+async def process_archive_price(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    data = await state.get_data()
+    test_id = data["archive_test_id"]
+    await state.clear()
+
+    changed = await archive_finished_test(session, test_id, int(message.text), message.from_user.id)
+    if not changed:
+        await message.answer("⚠️ Bu testni arxivga ko'chirib bo'lmaydi (faqat yakunlangan jonli testlar uchun).")
+        return
+
+    test = await get_test(session, test_id)
+    await message.answer(
+        f"✅ \"{test.title}\" arxivga ko'chirildi. Endi 📚 Arxiv testlar bo'limida {_fmt_price(test.price)}ga sotiladi.",
+        reply_markup=test_actions_keyboard(test),
+    )
+
+
+@router.message(TestManage.waiting_archive_price)
+async def process_archive_price_invalid(message: Message) -> None:
+    await message.answer("❗️ Iltimos, faqat raqam kiriting (narx, so'm):", reply_markup=cancel_inline_keyboard())
+
+
+# ---------------- 🆕 Butunlay o'chirish ----------------
+
+
+@router.callback_query(F.data.startswith("testdelete:"))
+async def confirm_delete(callback: CallbackQuery) -> None:
+    test_id = int(callback.data.split(":")[1])
+    await callback.message.edit_reply_markup(
+        reply_markup=delete_confirm_keyboard(test_id)
+    )
+    await callback.answer(
+        "⚠️ Diqqat: bu amal testni, savollarni, to'lovlarni va urinishlarni "
+        "BUTUNLAY o'chiradi, qaytarib bo'lmaydi!",
+        show_alert=True,
+    )
+
+
+@router.callback_query(F.data.startswith("testdeleteno:"))
+async def delete_no(callback: CallbackQuery, session: AsyncSession) -> None:
+    test_id = int(callback.data.split(":")[1])
+    test = await get_test(session, test_id)
+    await callback.message.edit_reply_markup(reply_markup=test_actions_keyboard(test))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("testdeleteyes:"))
+async def delete_yes(callback: CallbackQuery, session: AsyncSession) -> None:
+    test_id = int(callback.data.split(":")[1])
+    test = await get_test(session, test_id)
+    title = test.title if test else f"test_id={test_id}"
+
+    await delete_test_completely(session, test_id, callback.from_user.id)
+
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(f"🗑 \"{title}\" butunlay o'chirildi.")
     await callback.answer()

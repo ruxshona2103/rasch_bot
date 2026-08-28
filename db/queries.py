@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -291,6 +291,43 @@ async def cancel_test(session: AsyncSession, test_id: int, admin_id: int) -> Non
         update(Test).where(Test.test_id == test_id).values(status="bekor_qilingan")
     )
     session.add(AdminLog(admin_id=admin_id, action="test_cancel", target=f"test_id={test_id}"))
+    await session.commit()
+
+
+async def archive_finished_test(session: AsyncSession, test_id: int, new_price: int, admin_id: int) -> bool:
+    """🆕 Yakunlangan jonli testni arxivga ko'chiradi (mode='arxiv', status='arxivda').
+    Kalibrlangan b_difficulty qiymatlari saqlanib qoladi -- arxivda MLE bilan
+    tezkor baholash uchun ishlatiladi (III.7-bo'lim)."""
+    result = await session.execute(
+        update(Test)
+        .where(Test.test_id == test_id, Test.mode == "jonli", Test.status == "yakunlangan")
+        .values(mode="arxiv", status="arxivda", price=new_price)
+        .returning(Test.test_id)
+    )
+    changed = result.scalar_one_or_none() is not None
+    if changed:
+        session.add(AdminLog(admin_id=admin_id, action="test_archive", target=f"test_id={test_id}"))
+    await session.commit()
+    return changed
+
+
+async def delete_test_completely(session: AsyncSession, test_id: int, admin_id: int) -> None:
+    """⚠️ Qaytarib bo'lmaydigan amal — testni va unga bog'liq BARCHA
+    ma'lumotlarni (savollar, urinishlar, javoblar, to'lovlar, chiptalar)
+    butunlay o'chiradi. Faqat yakunlangan/bekor qilingan/arxivdagi testlar
+    uchun ishlatiladi (jonli_davom paytida chaqirilmasligi kerak)."""
+    attempt_ids_result = await session.execute(
+        select(Attempt.attempt_id).where(Attempt.test_id == test_id)
+    )
+    attempt_ids = [row[0] for row in attempt_ids_result.all()]
+    if attempt_ids:
+        await session.execute(delete(Answer).where(Answer.attempt_id.in_(attempt_ids)))
+    await session.execute(delete(Attempt).where(Attempt.test_id == test_id))
+    await session.execute(delete(Purchase).where(Purchase.test_id == test_id))
+    await session.execute(delete(Payment).where(Payment.test_id == test_id))
+    await session.execute(delete(Question).where(Question.test_id == test_id))
+    await session.execute(delete(Test).where(Test.test_id == test_id))
+    session.add(AdminLog(admin_id=admin_id, action="test_delete", target=f"test_id={test_id}"))
     await session.commit()
 
 

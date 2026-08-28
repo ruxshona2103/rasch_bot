@@ -12,3 +12,4 @@ class PaymentReview(StatesGroup):
 class TestManage(StatesGroup):
     waiting_video_url = State()
     waiting_schedule_time = State()
+    waiting_archive_price = State()
