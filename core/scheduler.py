@@ -82,8 +82,9 @@ async def close_test(bot: Bot, test_id: int) -> None:
         )
         if not changed:
             return
-        # TODO: Exam Mode qurilgach — barcha "davom_etmoqda" urinishlarni
-        # avto-yakunlash shu yerda qo'shiladi.
+        # "davom_etmoqda" urinishlar bu yerda emas, balki
+        # core.rasch.finalize_jonli_test boshida avtomatik yakunlanadi
+        # (Rasch hisoblashdan to'g'ridan-to'g'ri oldin, run_rasch chaqirilganda).
     logger.info("Test yopildi (to'lov/kirish to'xtatildi): test_id=%s", test_id)
 
 

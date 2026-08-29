@@ -166,8 +166,14 @@ async def finalize_jonli_test(session, test_id: int) -> list[tuple[int, float, s
     Qaytaradi: [(user_pk, ball_75, grade, rank_position), ...] — xabar yuborish uchun.
     Ma'lumot yo'q bo'lsa ham (0 savol yoki 0 urinish) test baribir
     'yakunlangan'ga o'tkaziladi — aks holda 'hisoblanmoqda'da abadiy qolib ketardi.
+
+    🆕 Hisoblashdan oldin hali 'davom_etmoqda' bo'lgan (testni tark etmagan)
+    urinishlar avtomatik yopiladi — aks holda ular hisob-kitobga umuman
+    kirmay qolardi (ishtirokchilar sonini kamaytirib, Rasch chegarasidan
+    pastga tushirib yuborishi mumkin edi).
     """
     from db.queries import (
+        auto_finish_all_pending_attempts,
         get_answers_map,
         get_questions_for_test,
         list_scoreable_attempts,
@@ -175,6 +181,8 @@ async def finalize_jonli_test(session, test_id: int) -> list[tuple[int, float, s
         set_attempt_result,
         set_question_b_difficulty,
     )
+
+    await auto_finish_all_pending_attempts(session, test_id)
 
     questions = [q for q in await get_questions_for_test(session, test_id) if not q.is_excluded]
     attempts = await list_scoreable_attempts(session, test_id)

@@ -576,6 +576,23 @@ async def auto_close_attempt(session: AsyncSession, attempt_id: int) -> None:
     await session.commit()
 
 
+async def auto_finish_all_pending_attempts(session: AsyncSession, test_id: int) -> int:
+    """🆕 Test yakunlanganda (Rasch hisoblashdan OLDIN) hali 'davom_etmoqda'
+    bo'lgan BARCHA urinishlarni bir yo'la majburan yopadi — aks holda
+    testni tashlab qo'ymagan (hali ekranda o'tirgan) ishtirokchilarning
+    javoblari Rasch hisob-kitobiga umuman kirmay qolardi. Qaytaradi: nechta
+    urinish yopilgani."""
+    result = await session.execute(
+        update(Attempt)
+        .where(Attempt.test_id == test_id, Attempt.status == "davom_etmoqda")
+        .values(status="vaqt_tugagan", finished_at=func.now())
+        .returning(Attempt.attempt_id)
+    )
+    closed_count = len(result.fetchall())
+    await session.commit()
+    return closed_count
+
+
 # ---------------- Rasch Engine (V-bo'lim) ----------------
 
 
