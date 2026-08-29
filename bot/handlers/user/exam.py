@@ -63,7 +63,19 @@ async def _render_question(target, session: AsyncSession, state: FSMContext) -> 
 
     questions = await get_questions_for_test(session, data["test_id"])
     total = len(questions)
-    order = data["current_order"]
+    if total == 0:
+        await state.clear()
+        await bot.send_message(chat_id, "⚠️ Bu testda savollar topilmadi.", reply_markup=main_menu_keyboard())
+        return
+
+    # 🆕 Chegaradan himoya: eski (allaqachon o'tilgan) xabardagi "Keyingi"/
+    # "Oldingi"/Navigator tugmasi bosilsa ham (masalan oxirgi savolda turib
+    # yuqoridagi eski xabardan "Keyingi"ni bossa), current_order haqiqiy
+    # oraliqqa qisilib qo'yiladi -- aks holda IndexError berardi.
+    order = max(1, min(data["current_order"], total))
+    if order != data["current_order"]:
+        await state.update_data(current_order=order)
+
     question = questions[order - 1]
     answers_map = await get_answers_map(session, data["attempt_id"])
     answered_count = sum(1 for q in questions if q.question_id in answers_map)
