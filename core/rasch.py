@@ -1,7 +1,8 @@
 """V-bo'lim: Rasch Engine.
 
-Jonli (50+ ishtirokchi): JMLE — b_difficulty savollarga, theta o'quvchilarga.
-Jonli (<50 ishtirokchi): klassik % ball (Rasch ishonchsiz bo'lgani uchun).
+Jonli (MIN_PARTICIPANTS_FOR_RASCH+ ishtirokchi): JMLE — b_difficulty
+savollarga, theta o'quvchilarga.
+Jonli (undan kam ishtirokchi): klassik % ball (Rasch ishonchsiz bo'lgani uchun).
 Arxiv (kalibrlangan bo'lsa): MLE — mavjud b_difficulty asosida <1s da theta.
 Arxiv (kalibrlanmagan bo'lsa): klassik % ball.
 
@@ -27,7 +28,7 @@ MAX_BALL = 75.0
 SCALE_CENTER = 37.5
 SCALE_SPREAD = 7.5
 THETA_CAP = 4.0
-MIN_PARTICIPANTS_FOR_RASCH = 50
+MIN_PARTICIPANTS_FOR_RASCH = 10  # 🆕 sinov uchun 50dan pasaytirildi — real ishga tushishda 50ga qaytariladi
 
 GRADE_TABLE = [
     (70.0, "A+"),
