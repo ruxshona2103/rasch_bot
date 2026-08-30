@@ -14,7 +14,7 @@ from bot.keyboards.common import cancel_inline_keyboard
 from bot.keyboards.test_manage import cancel_confirm_keyboard, delete_confirm_keyboard, test_actions_keyboard
 from bot.states.payment import TestManage
 from core.marketing import announce_schedule
-from core.rasch import finalize_jonli_test
+from core.rasch import finalize_jonli_test, format_breakdown
 from core.scheduler import schedule_test
 from db.queries import (
     archive_finished_test,
@@ -165,19 +165,19 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
     results = await finalize_jonli_test(session, test_id)
     test = await get_test(session, test_id)
     total = len(results)
-    lookup = {user_pk: (ball, grade, rank) for user_pk, ball, grade, rank in results}
+    lookup = {r.user_pk: r for r in results}
 
     for user in await list_purchasers(session, test_id):
-        info = lookup.get(user.user_pk)
-        if info is None:
+        result = lookup.get(user.user_pk)
+        if result is None:
             continue
-        ball, grade, rank = info
         try:
             await callback.bot.send_message(
                 user.telegram_id,
                 f"🏆 \"{test.title}\" NATIJANGIZ\n"
-                f"📊 Ball: {ball} / 75 | 🎖 Daraja: {grade or 'Baholanmadi'}\n"
-                f"🥇 Reyting: {total} tadan {rank}-o'rin",
+                f"📊 Ball: {result.ball_75} / 75 | 🎖 Daraja: {result.grade or 'Baholanmadi'}\n"
+                f"🥇 Reyting: {total} tadan {result.rank_position}-o'rin\n\n"
+                f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
             )
         except Exception:
             continue

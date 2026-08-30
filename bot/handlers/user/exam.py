@@ -22,7 +22,7 @@ from bot.keyboards.exam import (
 from bot.keyboards.main_menu import main_menu_keyboard
 from bot.states.exam import Exam
 from core.answer_key import is_valid_numeric_answer, normalize_open_answer
-from core.rasch import score_archive_attempt
+from core.rasch import format_breakdown, score_archive_attempt
 from db.queries import (
     auto_close_attempt,
     create_attempt,
@@ -242,12 +242,13 @@ async def finish_yes(callback: CallbackQuery, session: AsyncSession, state: FSMC
     await callback.answer()
 
     if test.mode == "arxiv":
-        ball, grade = await score_archive_attempt(session, data["attempt_id"])
+        ball, grade, correct_orders, wrong_orders = await score_archive_attempt(session, data["attempt_id"])
         await callback.message.answer(
             "✅ Test yakunlandi!\n"
             f"🏆 Ball: {ball} / 75 | 🎖 Daraja: {grade or 'Baholanmadi'}\n"
             "🏋️ Bu mashq rejimi — ball jonli sinovda kalibrlangan qiyinlik "
-            "darajalari asosida taxminiy hisoblanadi, rasmiy natija emas.",
+            "darajalari asosida taxminiy hisoblanadi, rasmiy natija emas.\n\n"
+            f"{format_breakdown(correct_orders, wrong_orders)}",
             reply_markup=main_menu_keyboard(),
         )
     else:

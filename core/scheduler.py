@@ -89,7 +89,7 @@ async def close_test(bot: Bot, test_id: int) -> None:
 
 
 async def run_rasch(bot: Bot, test_id: int) -> None:
-    from core.rasch import finalize_jonli_test
+    from core.rasch import finalize_jonli_test, format_breakdown
 
     async with async_session() as session:
         test = await get_test(session, test_id)
@@ -99,19 +99,19 @@ async def run_rasch(bot: Bot, test_id: int) -> None:
         results = await finalize_jonli_test(session, test_id)
         test = await get_test(session, test_id)
         total = len(results)
-        lookup = {user_pk: (ball, grade, rank) for user_pk, ball, grade, rank in results}
+        lookup = {r.user_pk: r for r in results}
 
         for user in await list_purchasers(session, test_id):
-            info = lookup.get(user.user_pk)
-            if info is None:
+            result = lookup.get(user.user_pk)
+            if result is None:
                 continue
-            ball, grade, rank = info
             await _notify(
                 bot,
                 user.telegram_id,
                 f"🏆 \"{test.title}\" NATIJANGIZ\n"
-                f"📊 Ball: {ball} / 75 | 🎖 Daraja: {grade or 'Baholanmadi'}\n"
-                f"🥇 Reyting: {total} tadan {rank}-o'rin",
+                f"📊 Ball: {result.ball_75} / 75 | 🎖 Daraja: {result.grade or 'Baholanmadi'}\n"
+                f"🥇 Reyting: {total} tadan {result.rank_position}-o'rin\n\n"
+                f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
             )
     logger.info("Rasch bosqichi yakunlandi: test_id=%s, %d natija", test_id, total)
 

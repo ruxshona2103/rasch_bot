@@ -20,9 +20,20 @@ Kalibrlash edge case'lari:
   tezroq tugatgan yuqorida)
 """
 
+from typing import NamedTuple
+
 import numpy as np
 
 from core.answer_key import is_open_answer_correct
+
+
+class AttemptResult(NamedTuple):
+    user_pk: int
+    ball_75: float
+    grade: str | None
+    rank_position: int
+    correct_orders: list[int]  # to'g'ri javob berilgan savollarning order_num'lari
+    wrong_orders: list[int]  # xato/belgilanmagan savollarning order_num'lari
 
 MAX_BALL = 75.0
 SCALE_CENTER = 37.5
@@ -57,6 +68,16 @@ def classic_ball(correct: int, total: int) -> float:
     if total == 0:
         return 0.0
     return round((correct / total) * MAX_BALL, 1)
+
+
+def format_breakdown(correct_orders: list[int], wrong_orders: list[int]) -> str:
+    """🆕 Natija xabariga qo'shiladigan savollar tahlili matni."""
+    correct_orders = sorted(correct_orders)
+    wrong_orders = sorted(wrong_orders)
+    lines = ["📋 Savollar tahlili:"]
+    lines.append(f"✅ To'g'ri ({len(correct_orders)} ta): {', '.join(map(str, correct_orders)) or '—'}")
+    lines.append(f"❌ Xato/belgilanmagan ({len(wrong_orders)} ta): {', '.join(map(str, wrong_orders)) or '—'}")
+    return "\n".join(lines)
 
 
 def is_answer_correct(question, given_answer: str | None) -> bool:
@@ -158,12 +179,13 @@ def run_mle_single(responses: np.ndarray, bs: np.ndarray, max_iter: int = 50, to
 # ---------------- Orchestration (DB bilan ishlaydigan qism) ----------------
 
 
-async def finalize_jonli_test(session, test_id: int) -> list[tuple[int, float, str | None, int]]:
+async def finalize_jonli_test(session, test_id: int) -> list[AttemptResult]:
     """Jonli test yakunlanganda (admin 'Yakunlash' bosgach yoki avtopilot orqali)
     barcha ishtirokchilar uchun BIR VAQTDA chaqiriladi. test.status allaqachon
     'hisoblanmoqda' bo'lishi kerak (test_manage.py / scheduler.close_test).
 
-    Qaytaradi: [(user_pk, ball_75, grade, rank_position), ...] — xabar yuborish uchun.
+    Qaytaradi: [AttemptResult(...), ...] — xabar yuborish uchun (🆕 endi
+    savollar tahlili — to'g'ri/xato order_num'lari — ham bor).
     Ma'lumot yo'q bo'lsa ham (0 savol yoki 0 urinish) test baribir
     'yakunlangan'ga o'tkaziladi — aks holda 'hisoblanmoqda'da abadiy qolib ketardi.
 
@@ -187,7 +209,7 @@ async def finalize_jonli_test(session, test_id: int) -> list[tuple[int, float, s
     questions = [q for q in await get_questions_for_test(session, test_id) if not q.is_excluded]
     attempts = await list_scoreable_attempts(session, test_id)
 
-    payload: list[tuple[int, float, str | None, int]] = []
+    payload: list[AttemptResult] = []
     use_rasch = False
 
     if questions and attempts:
@@ -198,7 +220,7 @@ async def finalize_jonli_test(session, test_id: int) -> list[tuple[int, float, s
                 matrix[i, j] = 1 if is_answer_correct(q, answers.get(q.question_id)) else 0
 
         use_rasch = len(attempts) >= MIN_PARTICIPANTS_FOR_RASCH
-        results: list[tuple] = []  # (attempt, ball, grade, theta)
+        results: list[tuple] = []  # (attempt, ball, grade, theta, correct_orders, wrong_orders)
 
         if use_rasch:
             thetas, bs = run_jmle(matrix)
@@ -210,30 +232,37 @@ async def finalize_jonli_test(session, test_id: int) -> list[tuple[int, float, s
             for i, attempt in enumerate(attempts):
                 ball = theta_to_ball75(float(thetas[i]))
                 grade = ball_to_grade(ball)
-                results.append((attempt, ball, grade, float(thetas[i])))
+                correct_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 1]
+                wrong_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 0]
+                results.append((attempt, ball, grade, float(thetas[i]), correct_orders, wrong_orders))
         else:
             for i, attempt in enumerate(attempts):
                 correct = int(matrix[i].sum())
                 ball = classic_ball(correct, len(questions))
                 grade = ball_to_grade(ball)
-                results.append((attempt, ball, grade, None))
+                correct_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 1]
+                wrong_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 0]
+                results.append((attempt, ball, grade, None, correct_orders, wrong_orders))
 
         # Reyting: ball kamayish, keyin finished_at o'sish (tezroq tugatgan yuqorida)
         ranked = sorted(
             results,
             key=lambda item: (-item[1], item[0].finished_at or item[0].started_at),
         )
-        for rank, (attempt, ball, grade, theta) in enumerate(ranked, start=1):
+        for rank, (attempt, ball, grade, theta, correct_orders, wrong_orders) in enumerate(ranked, start=1):
             await set_attempt_result(session, attempt.attempt_id, theta, ball, grade, rank_position=rank)
-            payload.append((attempt.user_pk, ball, grade, rank))
+            payload.append(AttemptResult(attempt.user_pk, ball, grade, rank, correct_orders, wrong_orders))
 
     await mark_test_status(session, test_id, ("hisoblanmoqda",), "yakunlangan", calibrated=use_rasch)
     return payload
 
 
-async def score_archive_attempt(session, attempt_id: int) -> tuple[float, str | None]:
+async def score_archive_attempt(session, attempt_id: int) -> tuple[float, str | None, list[int], list[int]]:
     """Arxiv urinishi yakunlanganda DARHOL chaqiriladi (III.7-bo'lim).
-    Test kalibrlangan bo'lsa MLE (<1s), bo'lmasa klassik % ball."""
+    Test kalibrlangan bo'lsa MLE (<1s), bo'lmasa klassik % ball.
+
+    Qaytaradi: (ball_75, grade, correct_orders, wrong_orders) — 🆕 savollar
+    tahlili uchun oxirgi ikkitasi."""
     from db.queries import get_attempt_by_id, get_questions_for_test, get_test, get_answers_map, set_attempt_result
 
     attempt = await get_attempt_by_id(session, attempt_id)
@@ -243,11 +272,12 @@ async def score_archive_attempt(session, attempt_id: int) -> tuple[float, str | 
 
     if not questions:
         await set_attempt_result(session, attempt_id, None, 0.0, None)
-        return 0.0, None
+        return 0.0, None, [], []
 
-    responses = np.array(
-        [1 if is_answer_correct(q, answers.get(q.question_id)) else 0 for q in questions]
-    )
+    correct_flags = [is_answer_correct(q, answers.get(q.question_id)) for q in questions]
+    responses = np.array([1 if flag else 0 for flag in correct_flags])
+    correct_orders = [q.order_num for q, flag in zip(questions, correct_flags) if flag]
+    wrong_orders = [q.order_num for q, flag in zip(questions, correct_flags) if not flag]
 
     if test.calibrated:
         bs = np.array(
@@ -261,4 +291,4 @@ async def score_archive_attempt(session, attempt_id: int) -> tuple[float, str | 
 
     grade = ball_to_grade(ball)
     await set_attempt_result(session, attempt_id, theta, ball, grade)
-    return ball, grade
+    return ball, grade, correct_orders, wrong_orders
