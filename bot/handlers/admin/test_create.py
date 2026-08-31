@@ -1,16 +1,19 @@
 """Test yaratish — IV.2-bo'lim: PDF usuli (asosiy) va qo'lda kiritish (zaxira).
 
-PDF usuli: admin PDF yuboradi (1 sahifa = 1 savol) -> PyMuPDF PNG'ga aylantiradi
--> har savol uchun birma-bir (rasmi ko'rsatilib) javob so'raladi: yopiq
-savollarda variant matnlari (A) ... B) ...) va to'g'ri javob, ochiq
-savollarda to'g'ri javob raqamda -> har biri saqlangach DB'ga yoziladi.
+PDF usuli: admin TO'LIQ PDF faylni (butun test varag'i) yuboradi — u
+sahifalarga BO'LINMAYDI, savol matni/rasmi qayta kiritilmaydi, chunki
+hammasi allaqachon o'sha faylning o'zida bor. Shu PDF fayl (Telegram
+file_id) testga bog'lanib qo'yiladi va Exam Mode boshlanganda userga
+xuddi shu holicha (butunligicha) yuboriladi. Admin faqat har savol
+uchun to'g'ri javobni kiritadi: yopiq savolda A/B/C/D tugmasi, ochiq
+savolda raqamli javob — closed_count/open_count bo'yicha tartib bilan.
 
 Qo'lda kiritish: har savol birma-bir so'raladi (turi -> kontent -> to'g'ri javob).
 """
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,11 +33,9 @@ from bot.keyboards.test_manage import test_actions_keyboard
 from bot.states.admin_test import TestCreate
 from core.answer_key import is_valid_numeric_answer, normalize_open_answer
 from core.marketing import announce_new_test
-from core.pdf_parser import pdf_to_png_pages
 from core.telegram_media import document_to_photo_file_id, is_image_document
-from core.storage import save_question_png, test_media_dir
 from db.models import Question, Test
-from db.queries import add_question, count_questions, create_test, get_test
+from db.queries import add_question, count_questions, create_test, get_test, set_test_pdf_file
 
 router = Router(name="admin_test_create")
 router.message.filter(IsAdmin())
@@ -228,7 +229,8 @@ async def process_method(callback: CallbackQuery, state: FSMContext) -> None:
 
     if method == "pdf":
         await callback.message.answer(
-            "📄 PDF yuboring.\n⚠️ QOIDA: 1 savol = 1 sahifa!",
+            "📄 Test faylini (to'liq PDF) yuboring — u bo'linmasdan, xuddi shu "
+            "holicha o'quvchilarga yuboriladi:",
             reply_markup=cancel_inline_keyboard(),
         )
         await state.set_state(TestCreate.waiting_pdf)
@@ -245,42 +247,24 @@ async def process_method(callback: CallbackQuery, state: FSMContext) -> None:
 # ================= PDF USULI =================
 
 @router.message(TestCreate.waiting_pdf, F.document)
-async def process_pdf(message: Message, state: FSMContext) -> None:
+async def process_pdf(message: Message, state: FSMContext, session: AsyncSession) -> None:
     document = message.document
     if not (document.file_name or "").lower().endswith(".pdf"):
         await message.answer("❗️ Faqat PDF fayl qabul qilinadi. Qayta yuboring:")
         return
 
-    file_bytes_io = await message.bot.download(document)
-    pdf_bytes = file_bytes_io.read()
-
-    try:
-        pages = pdf_to_png_pages(pdf_bytes)
-    except Exception:
-        await message.answer("❗️ PDF o'qib bo'lmadi. Fayl buzilgan bo'lishi mumkin, qayta yuboring:")
-        return
-
     data = await state.get_data()
     test_id = data["test_id"]
-    expected = data["closed_count"] + data["open_count"]
+    await set_test_pdf_file(session, test_id, document.file_id)
 
-    for order_num, png_bytes in enumerate(pages, start=1):
-        save_question_png(test_id, order_num, png_bytes)
-
-    await state.update_data(pdf_page_count=len(pages))
-
-    warn = ""
-    if len(pages) != expected:
-        warn = (
-            f"\n⚠️ Kutilgan savollar soni {expected} edi, lekin PDF'da {len(pages)} "
-            f"sahifa topildi. Baribir shu son bilan davom etamizmi?"
-        )
-
+    total = data["closed_count"] + data["open_count"]
     await message.answer(
-        f"✅ {len(pages)} sahifa topildi.{warn}\n{len(pages)} savol sifatida saqlaymi?",
-        reply_markup=yes_no_keyboard("pdfconfirm:yes", "pdfconfirm:no"),
+        f"✅ PDF qabul qilindi. U bo'linmasdan, xuddi shu holicha o'quvchilarga yuboriladi.\n"
+        f"✍️ Endi {total} ta savol ({data['closed_count']} yopiq + {data['open_count']} ochiq) "
+        "uchun to'g'ri javoblarni birma-bir kiritamiz."
     )
-    await state.set_state(TestCreate.waiting_pdf_confirm)
+    await state.update_data(pdf_order=1)
+    await _ask_pdf_answer(message, state)
 
 
 @router.message(TestCreate.waiting_pdf)
@@ -291,71 +275,27 @@ async def process_pdf_invalid(message: Message) -> None:
     )
 
 
-@router.callback_query(TestCreate.waiting_pdf_confirm, F.data == "pdfconfirm:no")
-async def pdf_confirm_no(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.message.answer("📄 Yangi PDF yuboring:")
-    await state.set_state(TestCreate.waiting_pdf)
-    await callback.answer()
-
-
-@router.callback_query(TestCreate.waiting_pdf_confirm, F.data == "pdfconfirm:yes")
-async def pdf_confirm_yes(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.message.edit_reply_markup(reply_markup=None)
-    await state.update_data(pdf_order=1)
-    await callback.message.answer("✍️ Endi har bir savol uchun javobni birma-bir kiritamiz.")
-    await _ask_pdf_question(callback.message, state)
-    await callback.answer()
-
-
-async def _ask_pdf_question(message: Message, state: FSMContext) -> None:
-    """PDF'dan olingan navbatdagi savol rasmini ko'rsatadi va javobini so'raydi.
-    1..closed_count -> yopiq (A/B/C/D), qolgani -> ochiq (raqamli), xuddi
-    eski kalit formatidagi tartib bilan bir xil ("1-A ... 35-D 36:12 ...")."""
+async def _ask_pdf_answer(message: Message, state: FSMContext) -> None:
+    """Navbatdagi savol uchun faqat to'g'ri javobni so'raydi (matn/rasm
+    qayta kiritilmaydi — hammasi PDF faylning o'zida bor). 1..closed_count
+    -> yopiq (A/B/C/D), qolgani -> ochiq (raqamli)."""
     data = await state.get_data()
     order_num = data["pdf_order"]
-    page_count = data["pdf_page_count"]
-    test_id = data["test_id"]
+    total = data["closed_count"] + data["open_count"]
     qtype = "yopiq" if order_num <= data["closed_count"] else "ochiq"
-
-    png_path = test_media_dir(test_id) / f"{order_num}.png"
-    photo_msg = await message.answer_photo(
-        photo=BufferedInputFile(png_path.read_bytes(), filename=f"{order_num}.png"),
-        caption=f"{order_num}/{page_count} — {'Yopiq (A/B/C/D)' if qtype == 'yopiq' else 'Ochiq (raqamli)'}",
-    )
-    await state.update_data(
-        pdf_current_qtype=qtype,
-        pdf_current_image_file_id=photo_msg.photo[-1].file_id,
-        pdf_current_options=None,
-    )
+    await state.update_data(pdf_current_qtype=qtype)
 
     if qtype == "yopiq":
         await message.answer(
-            f"{order_num}-savol uchun javob variantlarini kiriting, masalan:\nA) 24\nB) 36\nC) 12\nD) 8",
-            reply_markup=cancel_inline_keyboard(),
+            f"{order_num}/{total} — to'g'ri javobni tanlang:",
+            reply_markup=manual_closed_answer_keyboard(),
         )
-        await state.set_state(TestCreate.waiting_pdf_options)
     else:
         await message.answer(
-            f"{order_num}-savol uchun to'g'ri javobni raqamda kiriting (masalan: 12 yoki 0.5|1/2):",
+            f"{order_num}/{total} — to'g'ri javobni raqamda kiriting (masalan: 12 yoki 0.5|1/2):",
             reply_markup=cancel_inline_keyboard(),
         )
-        await state.set_state(TestCreate.waiting_pdf_answer)
-
-
-@router.message(TestCreate.waiting_pdf_options, F.text)
-async def pdf_process_options(message: Message, state: FSMContext) -> None:
-    await state.update_data(pdf_current_options=message.text.strip())
-    await message.answer("To'g'ri javobni tanlang:", reply_markup=manual_closed_answer_keyboard())
     await state.set_state(TestCreate.waiting_pdf_answer)
-
-
-@router.message(TestCreate.waiting_pdf_options)
-async def pdf_process_options_invalid(message: Message) -> None:
-    await message.answer(
-        "❗️ Variantlarni matn ko'rinishida kiriting (masalan: A) 24  B) 36  C) 12  D) 8):",
-        reply_markup=cancel_inline_keyboard(),
-    )
 
 
 @router.callback_query(TestCreate.waiting_pdf_answer, F.data.startswith("answer:"))
@@ -364,7 +304,7 @@ async def pdf_process_answer_closed(
 ) -> None:
     answer = callback.data.split(":", 1)[1]
     await callback.message.edit_reply_markup(reply_markup=None)
-    await _save_pdf_question(callback.message, state, session, answer)
+    await _save_pdf_answer(callback.message, state, session, answer)
     await callback.answer()
 
 
@@ -385,15 +325,15 @@ async def pdf_process_answer_open(
         return
 
     answer = "|".join(normalize_open_answer(part) for part in raw.split("|"))
-    await _save_pdf_question(message, state, session, answer)
+    await _save_pdf_answer(message, state, session, answer)
 
 
-async def _save_pdf_question(
+async def _save_pdf_answer(
     message: Message, state: FSMContext, session: AsyncSession, answer: str
 ) -> None:
     data = await state.get_data()
     order_num = data["pdf_order"]
-    page_count = data["pdf_page_count"]
+    total = data["closed_count"] + data["open_count"]
 
     await add_question(
         session,
@@ -401,20 +341,18 @@ async def _save_pdf_question(
         order_num=order_num,
         qtype=data["pdf_current_qtype"],
         correct_answer=answer,
-        text=data.get("pdf_current_options"),
-        image_file_id=data["pdf_current_image_file_id"],
     )
     await message.answer(f"✅ {order_num}-savol saqlandi.")
     await state.update_data(pdf_order=order_num + 1)
 
-    if order_num >= page_count:
+    if order_num >= total:
         await message.answer(
-            f"✅ Jami {page_count} savol saqlandi.",
+            f"✅ Jami {total} savol saqlandi.",
             reply_markup=yes_no_keyboard("finalconfirm:yes", "finalconfirm:no"),
         )
         await state.set_state(TestCreate.waiting_final_confirm)
     else:
-        await _ask_pdf_question(message, state)
+        await _ask_pdf_answer(message, state)
 
 
 # ================= QO'LDA KIRITISH USULI =================

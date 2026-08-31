@@ -72,6 +72,11 @@ async def create_test(
     return test
 
 
+async def set_test_pdf_file(session: AsyncSession, test_id: int, pdf_file_id: str) -> None:
+    await session.execute(update(Test).where(Test.test_id == test_id).values(pdf_file_id=pdf_file_id))
+    await session.commit()
+
+
 async def add_question(
     session: AsyncSession,
     test_id: int,

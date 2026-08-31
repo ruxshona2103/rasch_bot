@@ -140,6 +140,13 @@ async def enter_exam(callback: CallbackQuery, session: AsyncSession, state: FSMC
 
     await callback.answer()
     await callback.message.answer("🔴 Exam Mode boshlandi!\n⚠️ Javobingiz har bosishda darhol saqlanadi.")
+
+    if test.pdf_file_id:
+        await callback.message.answer_document(
+            test.pdf_file_id,
+            caption="📄 Test savollari (to'liq fayl) — javoblarni pastdagi tugmalar orqali belgilang.",
+        )
+
     await _render_question(callback.message, session, state)
 
 

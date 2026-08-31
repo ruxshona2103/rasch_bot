@@ -51,6 +51,9 @@ class Test(Base):
     start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     video_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 🆕 PDF usulida yaratilgan testning to'liq original fayli (Telegram file_id) —
+    # savollar alohida rasmlarga bo'linmaydi, shu faylning o'zi userga yuboriladi.
+    pdf_file_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="tayyorlanmoqda")
     # tayyorlanmoqda | rejalashtirilgan | jonli_davom | hisoblanmoqda |
     # yakunlangan | arxivda | bekor_qilingan
