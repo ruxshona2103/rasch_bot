@@ -14,13 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.filters.admin import IsAdmin
 from bot.keyboards.admin import admin_panel_keyboard
-from bot.keyboards.common import cancel_inline_keyboard
+from bot.keyboards.common import back_cancel_keyboard, cancel_inline_keyboard
 from bot.keyboards.admin_test import (
     manual_closed_answer_keyboard,
     manual_next_keyboard,
     manual_qtype_keyboard,
     method_keyboard,
     mode_keyboard,
+    price_keyboard,
     yes_no_keyboard,
 )
 from bot.keyboards.test_manage import test_actions_keyboard
@@ -54,7 +55,8 @@ async def start_test_creation(message: Message, state: FSMContext) -> None:
 async def process_title(message: Message, state: FSMContext) -> None:
     await state.update_data(title=message.text.strip())
     await message.answer(
-        "2️⃣ Yopiq savollar soni (A/B/C/D), masalan: 35", reply_markup=cancel_inline_keyboard()
+        "2️⃣ Yopiq savollar soni (A/B/C/D), masalan: 35",
+        reply_markup=back_cancel_keyboard("tcback:title"),
     )
     await state.set_state(TestCreate.waiting_closed_count)
 
@@ -63,43 +65,48 @@ async def process_title(message: Message, state: FSMContext) -> None:
 async def process_closed_count(message: Message, state: FSMContext) -> None:
     await state.update_data(closed_count=int(message.text))
     await message.answer(
-        "Ochiq savollar soni (raqamli javob), masalan: 10", reply_markup=cancel_inline_keyboard()
+        "Ochiq savollar soni (raqamli javob), masalan: 10",
+        reply_markup=back_cancel_keyboard("tcback:closed_count"),
     )
     await state.set_state(TestCreate.waiting_open_count)
 
 
 @router.message(TestCreate.waiting_closed_count)
 async def process_closed_count_invalid(message: Message) -> None:
-    await message.answer("Iltimos, faqat raqam kiriting:", reply_markup=cancel_inline_keyboard())
+    await message.answer(
+        "Iltimos, faqat raqam kiriting:", reply_markup=back_cancel_keyboard("tcback:title")
+    )
 
 
 @router.message(TestCreate.waiting_open_count, F.text.regexp(r"^\d+$"))
 async def process_open_count(message: Message, state: FSMContext) -> None:
     await state.update_data(open_count=int(message.text))
     await message.answer(
-        "3️⃣ Test davomiyligi (daqiqada), masalan: 120", reply_markup=cancel_inline_keyboard()
+        "3️⃣ Test davomiyligi (daqiqada), masalan: 120",
+        reply_markup=back_cancel_keyboard("tcback:open_count"),
     )
     await state.set_state(TestCreate.waiting_duration)
 
 
 @router.message(TestCreate.waiting_open_count)
 async def process_open_count_invalid(message: Message) -> None:
-    await message.answer("Iltimos, faqat raqam kiriting:", reply_markup=cancel_inline_keyboard())
+    await message.answer(
+        "Iltimos, faqat raqam kiriting:", reply_markup=back_cancel_keyboard("tcback:closed_count")
+    )
 
 
 @router.message(TestCreate.waiting_duration, F.text.regexp(r"^\d+$"))
 async def process_duration(message: Message, state: FSMContext) -> None:
     await state.update_data(duration_min=int(message.text))
-    await message.answer(
-        "4️⃣ 💰 Narxni kiriting (so'mda), masalan: 15000", reply_markup=cancel_inline_keyboard()
-    )
+    await message.answer("4️⃣ 💰 Narxni kiriting (so'mda), masalan: 15000", reply_markup=price_keyboard())
     await state.set_state(TestCreate.waiting_price)
 
 
 @router.message(TestCreate.waiting_duration)
 async def process_duration_invalid(message: Message) -> None:
     await message.answer(
-        "Iltimos, faqat raqam kiriting (daqiqa):", reply_markup=cancel_inline_keyboard()
+        "Iltimos, faqat raqam kiriting (daqiqa):",
+        reply_markup=back_cancel_keyboard("tcback:open_count"),
     )
 
 
@@ -112,9 +119,62 @@ async def process_price(message: Message, state: FSMContext) -> None:
 
 @router.message(TestCreate.waiting_price)
 async def process_price_invalid(message: Message) -> None:
-    await message.answer(
-        "Iltimos, faqat raqam kiriting (narx, so'm):", reply_markup=cancel_inline_keyboard()
+    await message.answer("Iltimos, faqat raqam kiriting (narx, so'm):", reply_markup=price_keyboard())
+
+
+@router.callback_query(TestCreate.waiting_price, F.data == "tcprice:free")
+async def process_price_free(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(price=0)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer("🆓 Test BEPUL qilib belgilandi.\n5️⃣ Rejimni tanlang:", reply_markup=mode_keyboard())
+    await state.set_state(TestCreate.waiting_mode)
+    await callback.answer()
+
+
+# ---------- ⬅️ Orqaga (faqat shu qadamni bekor qilib, oldingi so'rovga qaytaradi) ----------
+
+@router.callback_query(F.data == "tcback:title")
+async def back_to_title(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        "1️⃣ Test nomini kiriting (masalan: Mock #5 — Matematika):",
+        reply_markup=cancel_inline_keyboard(),
     )
+    await state.set_state(TestCreate.waiting_title)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "tcback:closed_count")
+async def back_to_closed_count(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        "2️⃣ Yopiq savollar soni (A/B/C/D), masalan: 35",
+        reply_markup=back_cancel_keyboard("tcback:title"),
+    )
+    await state.set_state(TestCreate.waiting_closed_count)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "tcback:open_count")
+async def back_to_open_count(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        "Ochiq savollar soni (raqamli javob), masalan: 10",
+        reply_markup=back_cancel_keyboard("tcback:closed_count"),
+    )
+    await state.set_state(TestCreate.waiting_open_count)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "tcback:duration")
+async def back_to_duration(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        "3️⃣ Test davomiyligi (daqiqada), masalan: 120",
+        reply_markup=back_cancel_keyboard("tcback:open_count"),
+    )
+    await state.set_state(TestCreate.waiting_duration)
+    await callback.answer()
 
 
 # ---------- 5) Rejim ----------

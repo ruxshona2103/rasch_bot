@@ -3,6 +3,16 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from bot.keyboards.common import with_cancel_row
 
 
+def price_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🆓 Tekin (bepul)", callback_data="tcprice:free")],
+            [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="tcback:duration")],
+            [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="flow:cancel")],
+        ]
+    )
+
+
 def mode_keyboard() -> InlineKeyboardMarkup:
     return with_cancel_row(
         InlineKeyboardMarkup(

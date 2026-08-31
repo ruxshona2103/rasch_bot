@@ -9,6 +9,12 @@ def pay_button_keyboard(test_id: int) -> InlineKeyboardMarkup:
     )
 
 
+def free_enter_keyboard(test_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🆓 Bepul — Kirish", callback_data=f"pay:start:{test_id}")]]
+    )
+
+
 def enter_test_keyboard(test_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="▶️ Kirish", callback_data=f"examenter:{test_id}")]]

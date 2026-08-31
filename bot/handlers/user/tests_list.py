@@ -6,9 +6,15 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
-from bot.keyboards.payment import approve_reject_keyboard, enter_test_keyboard, pay_button_keyboard
+from bot.keyboards.payment import (
+    approve_reject_keyboard,
+    enter_test_keyboard,
+    free_enter_keyboard,
+    pay_button_keyboard,
+)
 from bot.states.payment import PaymentFlow
 from db.queries import (
+    approve_payment,
     create_payment,
     get_payment_by_receipt_hash,
     get_pending_payment,
@@ -51,7 +57,8 @@ def _format_test_card(test) -> str:
             schedule = "⏳ Boshlanish vaqti tez orada e'lon qilinadi"
     else:
         schedule = "📚 Istalgan vaqtda"
-    return f"{emoji} {test.title}\n{schedule} | 💰 {_fmt_price(test.price)}"
+    price_line = "🆓 BEPUL" if test.price == 0 else f"💰 {_fmt_price(test.price)}"
+    return f"{emoji} {test.title}\n{schedule} | {price_line}"
 
 
 @router.message(F.text == "🔴 Jonli testlar")
@@ -87,6 +94,8 @@ async def _list_tests(message: Message, session: AsyncSession, mode: str) -> Non
                 await message.answer(
                     f"{card}\n✅ Kirish huquqingiz bor\n⏳ Hali boshlanmagan — boshlansa xabar beramiz."
                 )
+        elif test.price == 0:
+            await message.answer(card, reply_markup=free_enter_keyboard(test.test_id))
         else:
             await message.answer(card, reply_markup=pay_button_keyboard(test.test_id))
 
@@ -107,6 +116,25 @@ async def start_payment(callback: CallbackQuery, state: FSMContext, session: Asy
 
     if await get_pending_payment(session, user.user_pk, test_id):
         await callback.answer("⏳ Oldingi chekingiz hali tekshirilmoqda, iltimos kuting.", show_alert=True)
+        return
+
+    if test.price == 0:
+        payment = await create_payment(
+            session,
+            user_pk=user.user_pk,
+            test_id=test_id,
+            receipt_file_id="BEPUL",
+            receipt_hash=None,
+            amount=0,
+        )
+        await approve_payment(session, payment.payment_id, admin_id=0)
+        user = await get_user_by_telegram_id(session, callback.from_user.id)
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.answer(
+            f"🆓 Bu test bepul!\n🎫 Sizning ID: {user.public_id}\n✅ Kirish huquqi berildi.",
+            reply_markup=enter_test_keyboard(test_id),
+        )
+        await callback.answer()
         return
 
     await callback.message.edit_reply_markup(reply_markup=None)
