@@ -153,3 +153,20 @@ class BotSetting(Base):
 
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+# 🆕 Apellyatsiya (IV.5-bo'lim): o'quvchi savol/kalitga e'tiroz bildiradi
+class Appeal(Base):
+    __tablename__ = "appeals"
+
+    appeal_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_pk: Mapped[int] = mapped_column(ForeignKey("users.user_pk"))
+    attempt_id: Mapped[int] = mapped_column(ForeignKey("attempts.attempt_id"))
+    test_id: Mapped[int] = mapped_column(ForeignKey("tests.test_id"))
+    question_order_num: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="kutilmoqda")
+    # kutilmoqda | kalit_tuzatildi | savol_chiqarildi | rad_etildi
+    admin_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

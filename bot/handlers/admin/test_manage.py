@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
 from bot.filters.admin import IsAdmin
+from bot.keyboards.appeal import appeal_button_keyboard
 from bot.keyboards.common import cancel_inline_keyboard
 from bot.keyboards.test_manage import cancel_confirm_keyboard, delete_confirm_keyboard, test_actions_keyboard
 from bot.states.payment import TestManage
@@ -178,6 +179,7 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
                 f"📊 Ball: {result.ball_75} / 75 | 🎖 Daraja: {result.grade or 'Baholanmadi'}\n"
                 f"🥇 Reyting: {total} tadan {result.rank_position}-o'rin\n\n"
                 f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
+                reply_markup=appeal_button_keyboard(result.attempt_id),
             )
         except Exception:
             continue

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import (
     AdminLog,
     Answer,
+    Appeal,
     Attempt,
     BotSetting,
     Payment,
@@ -625,3 +626,93 @@ async def set_attempt_result(
         values["rank_position"] = rank_position
     await session.execute(update(Attempt).where(Attempt.attempt_id == attempt_id).values(**values))
     await session.commit()
+
+
+async def list_jonli_attempts(session: AsyncSession, test_id: int) -> list[Attempt]:
+    """Rasch qayta hisoblash uchun — shu testning barcha jonli urinishlari
+    (holatidan qat'i nazar: yakunlangan yoki vaqt_tugagan)."""
+    result = await session.execute(
+        select(Attempt).where(
+            Attempt.test_id == test_id,
+            Attempt.kind == "jonli",
+            Attempt.status.in_(("yakunlangan", "vaqt_tugagan")),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def list_arxiv_attempts(session: AsyncSession, test_id: int) -> list[Attempt]:
+    result = await session.execute(
+        select(Attempt).where(
+            Attempt.test_id == test_id,
+            Attempt.kind == "arxiv",
+            Attempt.status.in_(("yakunlangan", "vaqt_tugagan")),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def exclude_question(session: AsyncSession, question_id: int) -> None:
+    await session.execute(update(Question).where(Question.question_id == question_id).values(is_excluded=True))
+    await session.commit()
+
+
+async def set_question_correct_answer(session: AsyncSession, question_id: int, correct_answer: str) -> None:
+    await session.execute(
+        update(Question).where(Question.question_id == question_id).values(correct_answer=correct_answer)
+    )
+    await session.commit()
+
+
+async def get_question_by_order(session: AsyncSession, test_id: int, order_num: int) -> Question | None:
+    result = await session.execute(
+        select(Question).where(Question.test_id == test_id, Question.order_num == order_num)
+    )
+    return result.scalar_one_or_none()
+
+
+# ---------------- Apellyatsiya (IV.5-bo'lim) ----------------
+
+
+async def create_appeal(
+    session: AsyncSession, user_pk: int, attempt_id: int, test_id: int, question_order_num: int, comment: str
+) -> Appeal:
+    appeal = Appeal(
+        user_pk=user_pk,
+        attempt_id=attempt_id,
+        test_id=test_id,
+        question_order_num=question_order_num,
+        comment=comment,
+    )
+    session.add(appeal)
+    await session.commit()
+    await session.refresh(appeal)
+    return appeal
+
+
+async def list_pending_appeals(session: AsyncSession) -> list[Appeal]:
+    result = await session.execute(
+        select(Appeal).where(Appeal.status == "kutilmoqda").order_by(Appeal.created_at)
+    )
+    return list(result.scalars().all())
+
+
+async def get_appeal(session: AsyncSession, appeal_id: int) -> Appeal | None:
+    return await session.get(Appeal, appeal_id)
+
+
+async def resolve_appeal(
+    session: AsyncSession, appeal_id: int, admin_id: int, status: str
+) -> Appeal | None:
+    """status: 'kalit_tuzatildi' | 'savol_chiqarildi' | 'rad_etildi'."""
+    result = await session.execute(
+        update(Appeal)
+        .where(Appeal.appeal_id == appeal_id, Appeal.status == "kutilmoqda")
+        .values(status=status, admin_id=admin_id, decided_at=func.now())
+        .returning(Appeal)
+    )
+    appeal = result.scalar_one_or_none()
+    if appeal is not None:
+        session.add(AdminLog(admin_id=admin_id, action=f"appeal_{status}", target=f"appeal_id={appeal_id}"))
+    await session.commit()
+    return appeal

@@ -29,6 +29,7 @@ from core.answer_key import is_open_answer_correct
 
 class AttemptResult(NamedTuple):
     user_pk: int
+    attempt_id: int
     ball_75: float
     grade: str | None
     rank_position: int
@@ -179,6 +180,55 @@ def run_mle_single(responses: np.ndarray, bs: np.ndarray, max_iter: int = 50, to
 # ---------------- Orchestration (DB bilan ishlaydigan qism) ----------------
 
 
+async def _score_attempts(session, questions: list, attempts: list) -> tuple[list[AttemptResult], bool]:
+    """finalize_jonli_test va rescore_test uchun umumiy hisoblash yadrosi.
+    Qaytaradi: (AttemptResult ro'yxati, use_rasch)."""
+    from db.queries import get_answers_map, set_attempt_result, set_question_b_difficulty
+
+    if not questions or not attempts:
+        return [], False
+
+    matrix = np.zeros((len(attempts), len(questions)), dtype=int)
+    for i, attempt in enumerate(attempts):
+        answers = await get_answers_map(session, attempt.attempt_id)
+        for j, q in enumerate(questions):
+            matrix[i, j] = 1 if is_answer_correct(q, answers.get(q.question_id)) else 0
+
+    use_rasch = len(attempts) >= MIN_PARTICIPANTS_FOR_RASCH
+    results: list[tuple] = []  # (attempt, ball, grade, theta, correct_orders, wrong_orders)
+
+    if use_rasch:
+        thetas, bs = run_jmle(matrix)
+        for j, q in enumerate(questions):
+            b_val = bs[j]
+            await set_question_b_difficulty(session, q.question_id, None if np.isnan(b_val) else float(b_val))
+        for i, attempt in enumerate(attempts):
+            ball = theta_to_ball75(float(thetas[i]))
+            grade = ball_to_grade(ball)
+            correct_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 1]
+            wrong_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 0]
+            results.append((attempt, ball, grade, float(thetas[i]), correct_orders, wrong_orders))
+    else:
+        for i, attempt in enumerate(attempts):
+            correct = int(matrix[i].sum())
+            ball = classic_ball(correct, len(questions))
+            grade = ball_to_grade(ball)
+            correct_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 1]
+            wrong_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 0]
+            results.append((attempt, ball, grade, None, correct_orders, wrong_orders))
+
+    # Reyting: ball kamayish, keyin finished_at o'sish (tezroq tugatgan yuqorida)
+    ranked = sorted(results, key=lambda item: (-item[1], item[0].finished_at or item[0].started_at))
+    payload: list[AttemptResult] = []
+    for rank, (attempt, ball, grade, theta, correct_orders, wrong_orders) in enumerate(ranked, start=1):
+        await set_attempt_result(session, attempt.attempt_id, theta, ball, grade, rank_position=rank)
+        payload.append(
+            AttemptResult(attempt.user_pk, attempt.attempt_id, ball, grade, rank, correct_orders, wrong_orders)
+        )
+
+    return payload, use_rasch
+
+
 async def finalize_jonli_test(session, test_id: int) -> list[AttemptResult]:
     """Jonli test yakunlanganda (admin 'Yakunlash' bosgach yoki avtopilot orqali)
     barcha ishtirokchilar uchun BIR VAQTDA chaqiriladi. test.status allaqachon
@@ -196,12 +246,9 @@ async def finalize_jonli_test(session, test_id: int) -> list[AttemptResult]:
     """
     from db.queries import (
         auto_finish_all_pending_attempts,
-        get_answers_map,
         get_questions_for_test,
         list_scoreable_attempts,
         mark_test_status,
-        set_attempt_result,
-        set_question_b_difficulty,
     )
 
     await auto_finish_all_pending_attempts(session, test_id)
@@ -209,52 +256,32 @@ async def finalize_jonli_test(session, test_id: int) -> list[AttemptResult]:
     questions = [q for q in await get_questions_for_test(session, test_id) if not q.is_excluded]
     attempts = await list_scoreable_attempts(session, test_id)
 
-    payload: list[AttemptResult] = []
-    use_rasch = False
-
-    if questions and attempts:
-        matrix = np.zeros((len(attempts), len(questions)), dtype=int)
-        for i, attempt in enumerate(attempts):
-            answers = await get_answers_map(session, attempt.attempt_id)
-            for j, q in enumerate(questions):
-                matrix[i, j] = 1 if is_answer_correct(q, answers.get(q.question_id)) else 0
-
-        use_rasch = len(attempts) >= MIN_PARTICIPANTS_FOR_RASCH
-        results: list[tuple] = []  # (attempt, ball, grade, theta, correct_orders, wrong_orders)
-
-        if use_rasch:
-            thetas, bs = run_jmle(matrix)
-            for j, q in enumerate(questions):
-                b_val = bs[j]
-                await set_question_b_difficulty(
-                    session, q.question_id, None if np.isnan(b_val) else float(b_val)
-                )
-            for i, attempt in enumerate(attempts):
-                ball = theta_to_ball75(float(thetas[i]))
-                grade = ball_to_grade(ball)
-                correct_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 1]
-                wrong_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 0]
-                results.append((attempt, ball, grade, float(thetas[i]), correct_orders, wrong_orders))
-        else:
-            for i, attempt in enumerate(attempts):
-                correct = int(matrix[i].sum())
-                ball = classic_ball(correct, len(questions))
-                grade = ball_to_grade(ball)
-                correct_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 1]
-                wrong_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 0]
-                results.append((attempt, ball, grade, None, correct_orders, wrong_orders))
-
-        # Reyting: ball kamayish, keyin finished_at o'sish (tezroq tugatgan yuqorida)
-        ranked = sorted(
-            results,
-            key=lambda item: (-item[1], item[0].finished_at or item[0].started_at),
-        )
-        for rank, (attempt, ball, grade, theta, correct_orders, wrong_orders) in enumerate(ranked, start=1):
-            await set_attempt_result(session, attempt.attempt_id, theta, ball, grade, rank_position=rank)
-            payload.append(AttemptResult(attempt.user_pk, ball, grade, rank, correct_orders, wrong_orders))
+    payload, use_rasch = await _score_attempts(session, questions, attempts)
 
     await mark_test_status(session, test_id, ("hisoblanmoqda",), "yakunlangan", calibrated=use_rasch)
     return payload
+
+
+async def rescore_test(session, test_id: int) -> tuple[list[AttemptResult], list[tuple[int, float, str | None]]]:
+    """🆕 IV.5-bo'lim: admin apellyatsiyada kalitni tuzatgach yoki savolni
+    chiqargach chaqiriladi. Testning joriy statusini O'ZGARTIRMAYDI (allaqachon
+    'yakunlangan' yoki 'arxivda' bo'lishi mumkin) — faqat ballarni qayta hisoblaydi.
+
+    Qaytaradi: (jonli natijalar ro'yxati, [(user_pk, ball_75, grade), ...] arxiv
+    natijalari) — ikkalasi ham xabar yuborish uchun."""
+    from db.queries import get_questions_for_test, list_arxiv_attempts, list_jonli_attempts
+
+    questions = [q for q in await get_questions_for_test(session, test_id) if not q.is_excluded]
+    jonli_attempts = await list_jonli_attempts(session, test_id)
+
+    jonli_payload, _ = await _score_attempts(session, questions, jonli_attempts)
+
+    arxiv_payload: list[tuple[int, float, str | None]] = []
+    for attempt in await list_arxiv_attempts(session, test_id):
+        ball, grade, _correct, _wrong = await score_archive_attempt(session, attempt.attempt_id)
+        arxiv_payload.append((attempt.user_pk, ball, grade))
+
+    return jonli_payload, arxiv_payload
 
 
 async def score_archive_attempt(session, attempt_id: int) -> tuple[float, str | None, list[int], list[int]]:

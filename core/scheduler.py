@@ -28,9 +28,9 @@ def create_scheduler() -> AsyncIOScheduler:
     )
 
 
-async def _notify(bot: Bot, telegram_id: int, text: str) -> None:
+async def _notify(bot: Bot, telegram_id: int, text: str, reply_markup=None) -> None:
     try:
-        await bot.send_message(telegram_id, text)
+        await bot.send_message(telegram_id, text, reply_markup=reply_markup)
     except Exception:
         logger.warning("Xabar yuborilmadi: telegram_id=%s", telegram_id, exc_info=True)
 
@@ -89,6 +89,7 @@ async def close_test(bot: Bot, test_id: int) -> None:
 
 
 async def run_rasch(bot: Bot, test_id: int) -> None:
+    from bot.keyboards.appeal import appeal_button_keyboard
     from core.rasch import finalize_jonli_test, format_breakdown
 
     async with async_session() as session:
@@ -112,6 +113,7 @@ async def run_rasch(bot: Bot, test_id: int) -> None:
                 f"📊 Ball: {result.ball_75} / 75 | 🎖 Daraja: {result.grade or 'Baholanmadi'}\n"
                 f"🥇 Reyting: {total} tadan {result.rank_position}-o'rin\n\n"
                 f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
+                reply_markup=appeal_button_keyboard(result.attempt_id),
             )
     logger.info("Rasch bosqichi yakunlandi: test_id=%s, %d natija", test_id, total)
 

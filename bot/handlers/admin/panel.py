@@ -29,15 +29,6 @@ async def cancel_flow(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer("❌ Bekor qilindi.", reply_markup=main_menu_keyboard())
     await callback.answer()
 
-_STUB_TEXTS = {
-    "✉️ Apellyatsiyalar": (
-        "✉️ Apellyatsiyalar paneli Exam Mode qurilgach qo'shiladi — "
-        "chunki apellyatsiya uchun avval o'quvchilar test topshirgan (attempts) "
-        "bo'lishi kerak."
-    ),
-}
-
-
 @router.message(Command("admin"))
 async def open_admin_panel(message: Message) -> None:
     await message.answer(
@@ -52,8 +43,3 @@ async def back_to_user_mode(message: Message) -> None:
         "Foydalanuvchi rejimiga qaytdingiz.",
         reply_markup=main_menu_keyboard(),
     )
-
-
-@router.message(F.text.in_(_STUB_TEXTS.keys()))
-async def admin_stub(message: Message) -> None:
-    await message.answer(f"🚧 {_STUB_TEXTS[message.text]}")

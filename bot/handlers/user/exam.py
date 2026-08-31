@@ -19,6 +19,7 @@ from bot.keyboards.exam import (
     navigator_keyboard,
     open_question_keyboard,
 )
+from bot.keyboards.appeal import appeal_button_keyboard
 from bot.keyboards.main_menu import main_menu_keyboard
 from bot.states.exam import Exam
 from core.answer_key import is_valid_numeric_answer, normalize_open_answer
@@ -249,8 +250,9 @@ async def finish_yes(callback: CallbackQuery, session: AsyncSession, state: FSMC
             "🏋️ Bu mashq rejimi — ball jonli sinovda kalibrlangan qiyinlik "
             "darajalari asosida taxminiy hisoblanadi, rasmiy natija emas.\n\n"
             f"{format_breakdown(correct_orders, wrong_orders)}",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=appeal_button_keyboard(data["attempt_id"]),
         )
+        await callback.message.answer("Asosiy menyu:", reply_markup=main_menu_keyboard())
     else:
         await callback.message.answer(
             "✅ Test yakunlandi!\n"
