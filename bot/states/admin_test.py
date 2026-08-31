@@ -13,7 +13,8 @@ class TestCreate(StatesGroup):
     # PDF usuli
     waiting_pdf = State()
     waiting_pdf_confirm = State()
-    waiting_key = State()
+    waiting_pdf_options = State()
+    waiting_pdf_answer = State()
 
     # Qo'lda kiritish usuli
     waiting_manual_qtype = State()
