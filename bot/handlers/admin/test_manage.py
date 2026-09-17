@@ -202,6 +202,14 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
             except Exception:
                 continue
 
+        # 🆕 Adminlarga ham xuddi shu umumiy natija xabari yuboriladi
+        for admin_id in settings.admin_ids:
+            try:
+                for chunk in leaderboard_chunks:
+                    await callback.bot.send_message(admin_id, chunk)
+            except Exception:
+                continue
+
     method = "Rasch (JMLE)" if test.calibrated else "klassik %"
     await callback.message.edit_text(
         f"{_test_text(test)}\n\n✅ {total} ta natija hisoblandi ({method}).",

@@ -128,6 +128,11 @@ async def run_rasch(bot: Bot, test_id: int) -> None:
                     continue
                 for chunk in leaderboard_chunks:
                     await _notify(bot, user.telegram_id, chunk)
+
+            # 🆕 Adminlarga ham xuddi shu umumiy natija xabari yuboriladi
+            for admin_id in settings.admin_ids:
+                for chunk in leaderboard_chunks:
+                    await _notify(bot, admin_id, chunk)
     logger.info("Rasch bosqichi yakunlandi: test_id=%s, %d natija", test_id, total)
 
 
