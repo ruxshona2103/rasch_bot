@@ -186,15 +186,17 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
             continue
 
     # 🆕 Har bir ishtirokchiga shaxsiy natijadan tashqari UMUMIY natija
-    # (nechta odam qatnashdi, eng yuqori o'rinlar) ham yuboriladi.
+    # (nechta odam qatnashdi, HAMMASI eng yuqoridan pastga tartiblangan) ham
+    # yuboriladi -- chegarasiz, Telegram limitiga sig'masa bir nechta xabarga bo'linadi.
     if results:
         names = {user.user_pk: user.full_name for user in purchasers}
-        leaderboard_text = format_leaderboard(test.title, results, names)
+        leaderboard_chunks = format_leaderboard(test.title, results, names)
         for user in purchasers:
             if user.user_pk not in lookup:
                 continue
             try:
-                await callback.bot.send_message(user.telegram_id, leaderboard_text)
+                for chunk in leaderboard_chunks:
+                    await callback.bot.send_message(user.telegram_id, chunk)
             except Exception:
                 continue
 

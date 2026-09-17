@@ -71,23 +71,47 @@ def classic_ball(correct: int, total: int) -> float:
     return round((correct / total) * MAX_BALL, 1)
 
 
-def format_leaderboard(
-    test_title: str, results: list[AttemptResult], names: dict[int, str], top_n: int = 15
-) -> str:
+_TELEGRAM_CHUNK_LIMIT = 3500  # 4096 limitidan xavfsizlik zaxirasi bilan pastroq
+
+
+def format_leaderboard(test_title: str, results: list[AttemptResult], names: dict[int, str]) -> list[str]:
     """🆕 Test yakunlangach BARCHA ishtirokchilarga yuboriladigan umumiy
-    natija: nechta odam qatnashdi va eng yuqori o'rinlar kim ekani."""
+    natija: nechta odam qatnashdi va HAMMASI (chegarasiz) eng yuqoridan
+    pastga qarab tartiblangan holda. Telegram xabar chegarasiga (4096
+    belgi) sig'masa, bir nechta xabarga bo'linib qaytariladi."""
     total = len(results)
     ranked = sorted(results, key=lambda r: r.rank_position)
-    lines = [f"🏆 \"{test_title}\" — UMUMIY NATIJA", f"👥 Jami ishtirokchilar: {total} ta", ""]
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    for r in ranked[:top_n]:
+
+    header = f"🏆 \"{test_title}\" — UMUMIY NATIJA\n👥 Jami ishtirokchilar: {total} ta"
+    footer = "📩 O'zingizning to'liq natijangiz shaxsiy xabar sifatida yuborildi."
+
+    row_lines = []
+    for r in ranked:
         name = names.get(r.user_pk, "—")
         marker = medals.get(r.rank_position, f"{r.rank_position}.")
-        lines.append(f"{marker} {name} — {r.ball_75} ball ({r.grade or 'chegaradan past'})")
-    if total > top_n:
-        lines.append(f"\n... va yana {total - top_n} ishtirokchi.")
-    lines.append("\n📩 O'zingizning to'liq natijangiz shaxsiy xabar sifatida yuborildi.")
-    return "\n".join(lines)
+        row_lines.append(f"{marker} {name} — {r.ball_75} ball ({r.grade or 'chegaradan past'})")
+
+    chunks: list[str] = []
+    current = header
+    for line in row_lines:
+        candidate = f"{current}\n\n{line}" if current == header else f"{current}\n{line}"
+        if len(candidate) > _TELEGRAM_CHUNK_LIMIT:
+            chunks.append(current)
+            current = line
+        else:
+            current = candidate
+    chunks.append(current)
+
+    if len(chunks[-1]) + len(footer) + 2 > _TELEGRAM_CHUNK_LIMIT:
+        chunks.append(footer)
+    else:
+        chunks[-1] = f"{chunks[-1]}\n\n{footer}"
+
+    if len(chunks) > 1:
+        chunks = [f"{chunk}\n\n({i}/{len(chunks)}-qism)" for i, chunk in enumerate(chunks, start=1)]
+
+    return chunks
 
 
 def format_breakdown(correct_orders: list[int], wrong_orders: list[int]) -> str:
