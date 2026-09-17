@@ -111,7 +111,7 @@ async def run_rasch(bot: Bot, test_id: int) -> None:
                 bot,
                 user.telegram_id,
                 f"🏆 \"{test.title}\" NATIJANGIZ\n"
-                f"📊 Ball: {result.ball_75} / 75 | 🎖 Daraja: {result.grade or 'Baholanmadi'}\n"
+                f"📊 Ball: {result.ball_75} / 75 | 🎖 Daraja: {result.grade or 'chegaradan past'}\n"
                 f"🥇 Reyting: {total} tadan {result.rank_position}-o'rin\n\n"
                 f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
                 reply_markup=appeal_button_keyboard(result.attempt_id),

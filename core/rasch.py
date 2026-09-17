@@ -83,7 +83,7 @@ def format_leaderboard(
     for r in ranked[:top_n]:
         name = names.get(r.user_pk, "—")
         marker = medals.get(r.rank_position, f"{r.rank_position}.")
-        lines.append(f"{marker} {name} — {r.ball_75} ball ({r.grade or 'baholanmadi'})")
+        lines.append(f"{marker} {name} — {r.ball_75} ball ({r.grade or 'chegaradan past'})")
     if total > top_n:
         lines.append(f"\n... va yana {total - top_n} ishtirokchi.")
     lines.append("\n📩 O'zingizning to'liq natijangiz shaxsiy xabar sifatida yuborildi.")

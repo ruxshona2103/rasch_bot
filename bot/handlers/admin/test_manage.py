@@ -177,7 +177,7 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
             await callback.bot.send_message(
                 user.telegram_id,
                 f"🏆 \"{test.title}\" NATIJANGIZ\n"
-                f"📊 Ball: {result.ball_75} / 75 | 🎖 Daraja: {result.grade or 'Baholanmadi'}\n"
+                f"📊 Ball: {result.ball_75} / 75 | 🎖 Daraja: {result.grade or 'chegaradan past'}\n"
                 f"🥇 Reyting: {total} tadan {result.rank_position}-o'rin\n\n"
                 f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
                 reply_markup=appeal_button_keyboard(result.attempt_id),

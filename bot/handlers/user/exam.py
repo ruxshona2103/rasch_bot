@@ -93,7 +93,7 @@ async def _render_question(target, session: AsyncSession, state: FSMContext) -> 
         caption += (
             f"\n\n✍️ Joriy javobingiz: {current_val}"
             if current_val
-            else "\n\n✍️ Javobni raqamda yozing (masalan: 12 yoki -3,5)"
+            else "\n\n✍️ Javobni yozing (masalan: 12, -3,5, 1/2, √2, sqrt(5), 2*pi)"
         )
 
     if question.image_file_id:
@@ -211,9 +211,11 @@ async def input_open_answer(message: Message, session: AsyncSession, state: FSMC
 
     # 🆕 So'z bilan yozilgan javobni ("o'n ikki") umuman qabul qilmaymiz —
     # aks holda o'quvchi nima uchun noto'g'ri chiqqanini hech qachon bilolmas edi.
+    # Son, kasr, ildiz (√, sqrt, cbrt) va pi ifodalari qabul qilinadi.
     if not is_valid_numeric_answer(message.text):
         await message.answer(
-            "❗️ Javobni FAQAT RAQAMDA yozing (masalan: 12, -3,5 yoki 1/2).\n"
+            "❗️ Javobni matematik ifoda sifatida yozing: 12, -3,5, 1/2, √2, "
+            "sqrt(5), 2*pi kabi.\n"
             "So'z bilan yozilgan javob (masalan \"o'n ikki\") qabul qilinmaydi — qayta yozing:"
         )
         return
@@ -253,7 +255,7 @@ async def finish_yes(callback: CallbackQuery, session: AsyncSession, state: FSMC
         ball, grade, correct_orders, wrong_orders = await score_archive_attempt(session, data["attempt_id"])
         await callback.message.answer(
             "✅ Test yakunlandi!\n"
-            f"🏆 Ball: {ball} / 75 | 🎖 Daraja: {grade or 'Baholanmadi'}\n"
+            f"🏆 Ball: {ball} / 75 | 🎖 Daraja: {grade or 'chegaradan past'}\n"
             "🏋️ Bu mashq rejimi — ball jonli sinovda kalibrlangan qiyinlik "
             "darajalari asosida taxminiy hisoblanadi, rasmiy natija emas.\n\n"
             f"{format_breakdown(correct_orders, wrong_orders)}",

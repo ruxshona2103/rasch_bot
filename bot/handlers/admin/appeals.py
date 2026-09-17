@@ -54,7 +54,7 @@ async def _notify_rescored(bot, session: AsyncSession, test, jonli_results, arxi
             await bot.send_message(
                 user.telegram_id,
                 f"⚠️ \"{test.title}\" testida {reason}.\n"
-                f"Yangi ballingiz: {result.ball_75} / 75 | 🎖 {result.grade or 'Baholanmadi'}\n\n"
+                f"Yangi ballingiz: {result.ball_75} / 75 | 🎖 {result.grade or 'chegaradan past'}\n\n"
                 f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
             )
         except Exception:
@@ -66,7 +66,7 @@ async def _notify_rescored(bot, session: AsyncSession, test, jonli_results, arxi
             await bot.send_message(
                 user.telegram_id,
                 f"⚠️ \"{test.title}\" (arxiv) testida {reason}.\n"
-                f"Yangi ballingiz: {ball} / 75 | 🎖 {grade or 'Baholanmadi'}",
+                f"Yangi ballingiz: {ball} / 75 | 🎖 {grade or 'chegaradan past'}",
             )
         except Exception:
             continue
