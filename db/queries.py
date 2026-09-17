@@ -34,17 +34,27 @@ async def create_user(
     full_name: str,
     phone: str,
     region: str | None,
+    username: str | None = None,
 ) -> User:
     user = User(
         telegram_id=telegram_id,
         full_name=full_name,
         phone=phone,
         region=region,
+        username=username,
     )
     session.add(user)
     await session.commit()
     await session.refresh(user)
     return user
+
+
+async def update_username_if_changed(session: AsyncSession, user: User, username: str | None) -> None:
+    """🆕 /start bosilganda qaytuvchi foydalanuvchining Telegram username'i
+    (o'zgargan yoki avval saqlanmagan) yangilanadi -- eksport uchun kerak."""
+    if username != user.username:
+        await session.execute(update(User).where(User.user_pk == user.user_pk).values(username=username))
+        await session.commit()
 
 
 async def create_test(
@@ -378,6 +388,20 @@ async def delete_test_completely(session: AsyncSession, test_id: int, admin_id: 
     await session.execute(delete(Test).where(Test.test_id == test_id))
     session.add(AdminLog(admin_id=admin_id, action="test_delete", target=f"test_id={test_id}"))
     await session.commit()
+
+
+async def list_attempts_with_users_for_export(session: AsyncSession, test_id: int) -> list[tuple[Attempt, User]]:
+    """🆕 Admin Excel eksporti uchun — shu testdagi BARCHA urinishlar
+    (jonli+arxiv, holatidan qat'i nazar) tegishli foydalanuvchi bilan
+    birga, eng yuqori balldan pastga tartiblangan (rank_position bo'yicha,
+    hali baholanmagan/rank yo'qlar oxirida)."""
+    result = await session.execute(
+        select(Attempt, User)
+        .join(User, User.user_pk == Attempt.user_pk)
+        .where(Attempt.test_id == test_id)
+        .order_by(Attempt.rank_position.is_(None), Attempt.rank_position, Attempt.ball_75.desc().nullslast())
+    )
+    return [(row[0], row[1]) for row in result.all()]
 
 
 async def list_purchasers(session: AsyncSession, test_id: int) -> list[User]:

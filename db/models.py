@@ -32,6 +32,7 @@ class User(Base):
     user_pk: Mapped[int] = mapped_column(Integer, primary_key=True)
     public_id: Mapped[int | None] = mapped_column(Integer, unique=True, nullable=True)
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False, index=True)
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     full_name: Mapped[str] = mapped_column(String(120), nullable=False)
     phone: Mapped[str] = mapped_column(String(20), nullable=False)
     region: Mapped[str | None] = mapped_column(String(60), nullable=True)

@@ -292,7 +292,7 @@ async def _ask_pdf_answer(message: Message, state: FSMContext) -> None:
         )
     else:
         await message.answer(
-            f"{order_num}/{total} — to'g'ri javobni raqamda kiriting (masalan: 12 yoki 0.5|1/2):",
+            f"{order_num}/{total} — to'g'ri javobni yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
             reply_markup=cancel_inline_keyboard(),
         )
     await state.set_state(TestCreate.waiting_pdf_answer)
@@ -320,7 +320,8 @@ async def pdf_process_answer_open(
     raw = message.text.strip()
     if not is_valid_numeric_answer(raw):
         await message.answer(
-            "❗️ Faqat raqamda yozing (masalan: 12 yoki 0.5|1/2):", reply_markup=cancel_inline_keyboard()
+            "❗️ Matematik ifoda sifatida yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
+            reply_markup=cancel_inline_keyboard(),
         )
         return
 
@@ -441,7 +442,7 @@ async def _ask_manual_answer(message: Message, state: FSMContext) -> None:
         await message.answer("To'g'ri javobni tanlang:", reply_markup=manual_closed_answer_keyboard())
     else:
         await message.answer(
-            "To'g'ri javobni raqamda yozing (masalan: 12 yoki 0.5|1/2):",
+            "To'g'ri javobni yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
             reply_markup=cancel_inline_keyboard(),
         )
     await state.set_state(TestCreate.waiting_manual_answer)

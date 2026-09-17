@@ -13,7 +13,7 @@ from bot.keyboards.registration import (
 )
 from bot.states.registration import Registration
 from core.channel import is_subscribed
-from db.queries import create_user, get_user_by_telegram_id
+from db.queries import create_user, get_user_by_telegram_id, update_username_if_changed
 
 router = Router(name="registration")
 
@@ -23,6 +23,7 @@ async def cmd_start(message: Message, state: FSMContext, session: AsyncSession) 
     await state.clear()
     user = await get_user_by_telegram_id(session, message.from_user.id)
     if user:
+        await update_username_if_changed(session, user, message.from_user.username)
         await message.answer(
             f"Xush kelibsiz, {user.full_name}!",
             reply_markup=main_menu_keyboard(),
@@ -92,7 +93,7 @@ async def process_region(callback: CallbackQuery, state: FSMContext, session: As
     await callback.message.edit_reply_markup(reply_markup=None)
 
     if await is_subscribed(bot, callback.from_user.id):
-        await _finish_registration(callback.message, state, session, callback.from_user.id)
+        await _finish_registration(callback.message, state, session, callback.from_user.id, callback.from_user.username)
     else:
         await callback.message.answer(
             "📢 Davom etish uchun kanalimizga a'zo bo'ling:",
@@ -106,13 +107,13 @@ async def process_region(callback: CallbackQuery, state: FSMContext, session: As
 @router.callback_query(Registration.waiting_channel_check, F.data == "check_subscription")
 async def process_channel_check(callback: CallbackQuery, state: FSMContext, session: AsyncSession, bot: Bot) -> None:
     if await is_subscribed(bot, callback.from_user.id):
-        await _finish_registration(callback.message, state, session, callback.from_user.id)
+        await _finish_registration(callback.message, state, session, callback.from_user.id, callback.from_user.username)
     else:
         await callback.answer("❌ Hali kanalga a'zo emassiz.", show_alert=True)
 
 
 async def _finish_registration(
-    message: Message, state: FSMContext, session: AsyncSession, telegram_id: int
+    message: Message, state: FSMContext, session: AsyncSession, telegram_id: int, username: str | None
 ) -> None:
     data = await state.get_data()
     await create_user(
@@ -121,6 +122,7 @@ async def _finish_registration(
         full_name=data["full_name"],
         phone=data["phone"],
         region=data.get("region"),
+        username=username,
     )
     await state.clear()
     await message.answer(

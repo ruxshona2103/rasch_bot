@@ -27,6 +27,11 @@ def test_actions_keyboard(test) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🎥 Video qo'shish", callback_data=f"testvideo:{test.test_id}")]
     )
 
+    # 🆕 Ishtirokchilar va natijalarni Excel (.xlsx) formatida yuklab olish
+    rows.append(
+        [InlineKeyboardButton(text="📊 Excel yuklab olish", callback_data=f"testexport:{test.test_id}")]
+    )
+
     # 🆕 Savol qo'shish/o'zgartirish/o'chirish — jonli_davom/hisoblanmoqda'dan
     # tashqari har doim (arxivdagi testlar uchun ham) ochiq
     if test.status not in ("jonli_davom", "hisoblanmoqda"):

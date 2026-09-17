@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,7 @@ from bot.keyboards.appeal import appeal_button_keyboard
 from bot.keyboards.common import cancel_inline_keyboard
 from bot.keyboards.test_manage import cancel_confirm_keyboard, delete_confirm_keyboard, test_actions_keyboard
 from bot.states.payment import TestManage
+from core.export import build_results_excel
 from core.marketing import announce_schedule
 from core.rasch import finalize_jonli_test, format_breakdown, format_leaderboard
 from core.scheduler import schedule_test
@@ -25,6 +26,7 @@ from db.queries import (
     finish_test_manually,
     get_test,
     list_all_tests,
+    list_attempts_with_users_for_export,
     list_purchasers,
     set_test_schedule,
     set_test_video_url,
@@ -204,6 +206,25 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
     await callback.message.edit_text(
         f"{_test_text(test)}\n\n✅ {total} ta natija hisoblandi ({method}).",
         reply_markup=test_actions_keyboard(test),
+    )
+
+
+@router.callback_query(F.data.startswith("testexport:"))
+async def export_results_excel(callback: CallbackQuery, session: AsyncSession) -> None:
+    test_id = int(callback.data.split(":")[1])
+    test = await get_test(session, test_id)
+    rows = await list_attempts_with_users_for_export(session, test_id)
+
+    if not rows:
+        await callback.answer("⚠️ Bu testda hali ishtirokchi yo'q.", show_alert=True)
+        return
+
+    await callback.answer("⏳ Excel tayyorlanmoqda...")
+    excel_bytes = build_results_excel(test.title, rows)
+    safe_title = "".join(c if c.isalnum() else "_" for c in test.title)[:40]
+    await callback.message.answer_document(
+        BufferedInputFile(excel_bytes, filename=f"{safe_title}_natijalar.xlsx"),
+        caption=f"📊 \"{test.title}\" — {len(rows)} ta ishtirokchi natijasi.",
     )
 
 

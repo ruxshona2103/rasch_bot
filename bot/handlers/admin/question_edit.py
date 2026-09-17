@@ -138,7 +138,7 @@ async def _ask_add_answer(message: Message, state: FSMContext) -> None:
         await message.answer("To'g'ri javobni tanlang:", reply_markup=manual_closed_answer_keyboard())
     else:
         await message.answer(
-            "To'g'ri javobni raqamda yozing (masalan: 12 yoki 0.5|1/2):",
+            "To'g'ri javobni yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
             reply_markup=cancel_inline_keyboard(),
         )
     await state.set_state(QuestionEdit.waiting_add_answer)
@@ -335,7 +335,7 @@ async def _ask_edit_answer(message: Message, state: FSMContext) -> None:
         await message.answer("To'g'ri javobni tanlang:", reply_markup=manual_closed_answer_keyboard())
     else:
         await message.answer(
-            "To'g'ri javobni raqamda yozing (masalan: 12 yoki 0.5|1/2):",
+            "To'g'ri javobni yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
             reply_markup=cancel_inline_keyboard(),
         )
     await state.set_state(QuestionEdit.waiting_edit_answer)
