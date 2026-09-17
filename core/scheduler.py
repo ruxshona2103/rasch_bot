@@ -90,7 +90,7 @@ async def close_test(bot: Bot, test_id: int) -> None:
 
 async def run_rasch(bot: Bot, test_id: int) -> None:
     from bot.keyboards.appeal import appeal_button_keyboard
-    from core.rasch import finalize_jonli_test, format_breakdown
+    from core.rasch import finalize_jonli_test, format_breakdown, format_leaderboard
 
     async with async_session() as session:
         test = await get_test(session, test_id)
@@ -101,8 +101,9 @@ async def run_rasch(bot: Bot, test_id: int) -> None:
         test = await get_test(session, test_id)
         total = len(results)
         lookup = {r.user_pk: r for r in results}
+        purchasers = await list_purchasers(session, test_id)
 
-        for user in await list_purchasers(session, test_id):
+        for user in purchasers:
             result = lookup.get(user.user_pk)
             if result is None:
                 continue
@@ -115,6 +116,16 @@ async def run_rasch(bot: Bot, test_id: int) -> None:
                 f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
                 reply_markup=appeal_button_keyboard(result.attempt_id),
             )
+
+        # 🆕 Shaxsiy natijadan tashqari UMUMIY natija (nechta odam qatnashdi,
+        # eng yuqori o'rinlar) ham barcha ishtirokchilarga yuboriladi.
+        if results:
+            names = {user.user_pk: user.full_name for user in purchasers}
+            leaderboard_text = format_leaderboard(test.title, results, names)
+            for user in purchasers:
+                if user.user_pk not in lookup:
+                    continue
+                await _notify(bot, user.telegram_id, leaderboard_text)
     logger.info("Rasch bosqichi yakunlandi: test_id=%s, %d natija", test_id, total)
 
 

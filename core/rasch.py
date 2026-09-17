@@ -71,6 +71,25 @@ def classic_ball(correct: int, total: int) -> float:
     return round((correct / total) * MAX_BALL, 1)
 
 
+def format_leaderboard(
+    test_title: str, results: list[AttemptResult], names: dict[int, str], top_n: int = 15
+) -> str:
+    """🆕 Test yakunlangach BARCHA ishtirokchilarga yuboriladigan umumiy
+    natija: nechta odam qatnashdi va eng yuqori o'rinlar kim ekani."""
+    total = len(results)
+    ranked = sorted(results, key=lambda r: r.rank_position)
+    lines = [f"🏆 \"{test_title}\" — UMUMIY NATIJA", f"👥 Jami ishtirokchilar: {total} ta", ""]
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    for r in ranked[:top_n]:
+        name = names.get(r.user_pk, "—")
+        marker = medals.get(r.rank_position, f"{r.rank_position}.")
+        lines.append(f"{marker} {name} — {r.ball_75} ball ({r.grade or 'baholanmadi'})")
+    if total > top_n:
+        lines.append(f"\n... va yana {total - top_n} ishtirokchi.")
+    lines.append("\n📩 O'zingizning to'liq natijangiz shaxsiy xabar sifatida yuborildi.")
+    return "\n".join(lines)
+
+
 def format_breakdown(correct_orders: list[int], wrong_orders: list[int]) -> str:
     """🆕 Natija xabariga qo'shiladigan savollar tahlili matni."""
     correct_orders = sorted(correct_orders)

@@ -15,7 +15,7 @@ from bot.keyboards.common import cancel_inline_keyboard
 from bot.keyboards.test_manage import cancel_confirm_keyboard, delete_confirm_keyboard, test_actions_keyboard
 from bot.states.payment import TestManage
 from core.marketing import announce_schedule
-from core.rasch import finalize_jonli_test, format_breakdown
+from core.rasch import finalize_jonli_test, format_breakdown, format_leaderboard
 from core.scheduler import schedule_test
 from db.queries import (
     archive_finished_test,
@@ -167,8 +167,9 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
     test = await get_test(session, test_id)
     total = len(results)
     lookup = {r.user_pk: r for r in results}
+    purchasers = await list_purchasers(session, test_id)
 
-    for user in await list_purchasers(session, test_id):
+    for user in purchasers:
         result = lookup.get(user.user_pk)
         if result is None:
             continue
@@ -183,6 +184,19 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
             )
         except Exception:
             continue
+
+    # 🆕 Har bir ishtirokchiga shaxsiy natijadan tashqari UMUMIY natija
+    # (nechta odam qatnashdi, eng yuqori o'rinlar) ham yuboriladi.
+    if results:
+        names = {user.user_pk: user.full_name for user in purchasers}
+        leaderboard_text = format_leaderboard(test.title, results, names)
+        for user in purchasers:
+            if user.user_pk not in lookup:
+                continue
+            try:
+                await callback.bot.send_message(user.telegram_id, leaderboard_text)
+            except Exception:
+                continue
 
     method = "Rasch (JMLE)" if test.calibrated else "klassik %"
     await callback.message.edit_text(
