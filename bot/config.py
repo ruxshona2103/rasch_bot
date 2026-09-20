@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     TIMEZONE: str = "Asia/Tashkent"
 
+    # 🆕 Mini App uchun domen (Caddy shu manzilda HTTPS bilan xizmat qiladi)
+    MINIAPP_DOMAIN: str = ""
+
     DB_HOST: str
     DB_PORT: int = 5432
     DB_NAME: str
@@ -53,6 +56,14 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+
+    @property
+    def miniapp_url(self) -> str:
+        return f"https://{self.MINIAPP_DOMAIN}"
+
+    @property
+    def admin_miniapp_url(self) -> str:
+        return f"https://{self.MINIAPP_DOMAIN}/admin"
 
 
 settings = Settings()
