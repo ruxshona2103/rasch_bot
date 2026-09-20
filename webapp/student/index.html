@@ -5,25 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Imtihon testi</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px 16px; background: #f5f6fa; color: #1a1a1a; }
-    h1 { font-size: 18px; }
-    .status { padding: 12px; border-radius: 10px; background: #fff; margin-top: 16px; }
-  </style>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>📝 O'quvchi Mini App</h1>
-  <div class="status" id="status">Yuklanmoqda...</div>
-  <script>
-    const tg = window.Telegram?.WebApp;
-    const el = document.getElementById("status");
-    if (tg) {
-      tg.ready();
-      tg.expand();
-      el.textContent = "✅ Telegram WebApp aniqlandi. Tez orada javob varag'i shu yerda bo'ladi.";
-    } else {
-      el.textContent = "⚠️ Bu sahifa Telegram ichidan ochilishi kerak.";
-    }
-  </script>
+  <div id="app">
+    <div class="loading" id="loading">Yuklanmoqda...</div>
+  </div>
+  <script src="app.js"></script>
 </body>
 </html>

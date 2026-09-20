@@ -71,6 +71,9 @@ class Question(Base):
     text: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_file_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     qtype: Mapped[str] = mapped_column(String(10), nullable=False)  # 'yopiq' | 'ochiq'
+    # 🆕 Yopiq savol necha variantli: 4 (A-D, standart) yoki 6 (A-F, Milliy
+    # Sertifikatning "moslashtirish" bo'limi, masalan 33-35).
+    option_count: Mapped[int] = mapped_column(Integer, default=4)
     correct_answer: Mapped[str] = mapped_column(Text, nullable=False)
     b_difficulty: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_excluded: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -19,6 +19,7 @@ from bot.handlers.user import appeal, cabinet, exam, registration
 from bot.handlers.user import tests_list
 from bot.middlewares.db import DbSessionMiddleware
 from bot.middlewares.nav_reset import NavigationResetMiddleware
+from bot.webapp_api import start_webapp_server
 from core.scheduler import create_scheduler, recover_all_jobs
 
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +54,10 @@ async def main() -> None:
     scheduler = create_scheduler()
     await recover_all_jobs(scheduler, bot)
     scheduler.start()
+
+    # 🆕 Mini App backend API — botning o'zi bilan bir jarayonda, faqat
+    # localhost:8080'da (Caddy /api/* orqali tashqariga ochadi).
+    await start_webapp_server()
 
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot, scheduler=scheduler)
