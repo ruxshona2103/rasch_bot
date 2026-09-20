@@ -59,6 +59,10 @@ class Test(Base):
     # tayyorlanmoqda | rejalashtirilgan | jonli_davom | hisoblanmoqda |
     # yakunlangan | arxivda | bekor_qilingan
     calibrated: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 🆕 Kalibrlash paytidagi guruh theta o'rtachasi/og'ishi -- ball guruhga
+    # nisbatan hisoblanadi (z-ball); arxiv (MLE) ham aynan shu qiymatlar bilan.
+    scale_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scale_sd: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

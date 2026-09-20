@@ -7,7 +7,10 @@ Arxiv (kalibrlangan bo'lsa): MLE — mavjud b_difficulty asosida <1s da theta.
 Arxiv (kalibrlanmagan bo'lsa): klassik % ball.
 
 Eslatma: BBA rasmiy logit->ball koeffitsiyentini e'lon qilmagan, shuning uchun
-bu yerdagi chiziqli transformatsiya (SCALE_CENTER/SCALE_SPREAD) taxminiy —
+bu yerdagi transformatsiya (SCALE_CENTER/SCALE_SPREAD) taxminiy va GURUHGA
+NISBATAN: ball = CENTER + SPREAD * z, z = (theta - guruh o'rtachasi) / guruh og'ishi.
+Guruhning o'rtacha/og'ish qiymatlari kalibrlash paytida Test.scale_mean/scale_sd
+ga saqlanadi (arxiv MLE ham shularni ishlatadi) —
 natija rasmiyga yaqin, lekin aynan emas ("norasmiy mock", VIII-qism).
 
 Kalibrlash edge case'lari:
@@ -38,8 +41,8 @@ class AttemptResult(NamedTuple):
     wrong_orders: list[int]  # xato/belgilanmagan savollarning order_num'lari
 
 MAX_BALL = 75.0
-SCALE_CENTER = 37.5
-SCALE_SPREAD = 7.5
+SCALE_CENTER = 48.0
+SCALE_SPREAD = 13.0
 THETA_CAP = 4.0
 MIN_PARTICIPANTS_FOR_RASCH = 10  # 🆕 sinov uchun 50dan pasaytirildi — real ishga tushishda 50ga qaytariladi
 
@@ -61,8 +64,8 @@ def ball_to_grade(ball_75: float) -> str | None:
     return None
 
 
-def theta_to_ball75(theta: float) -> float:
-    ball = SCALE_CENTER + SCALE_SPREAD * theta
+def theta_to_ball75(theta: float, mean: float, sd: float) -> float:
+    ball = SCALE_CENTER + SCALE_SPREAD * (theta - mean) / sd
     return round(max(0.0, min(MAX_BALL, ball)), 1)
 
 
@@ -230,7 +233,7 @@ def run_mle_single(responses: np.ndarray, bs: np.ndarray, max_iter: int = 50, to
 async def _score_attempts(session, questions: list, attempts: list) -> tuple[list[AttemptResult], bool]:
     """finalize_jonli_test va rescore_test uchun umumiy hisoblash yadrosi.
     Qaytaradi: (AttemptResult ro'yxati, use_rasch)."""
-    from db.queries import get_answers_map, set_attempt_result, set_question_b_difficulty
+    from db.queries import get_answers_map, set_attempt_result, set_question_b_difficulty, set_test_scale
 
     if not questions or not attempts:
         return [], False
@@ -247,11 +250,14 @@ async def _score_attempts(session, questions: list, attempts: list) -> tuple[lis
 
     if use_rasch:
         thetas, bs = run_jmle(matrix)
+        scale_mean = float(np.mean(thetas))
+        scale_sd = float(np.std(thetas)) or 1.0
+        await set_test_scale(session, questions[0].test_id, scale_mean, scale_sd)
         for j, q in enumerate(questions):
             b_val = bs[j]
             await set_question_b_difficulty(session, q.question_id, None if np.isnan(b_val) else float(b_val))
         for i, attempt in enumerate(attempts):
-            ball = theta_to_ball75(float(thetas[i]))
+            ball = theta_to_ball75(float(thetas[i]), scale_mean, scale_sd)
             grade = ball_to_grade(ball)
             correct_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 1]
             wrong_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 0]
@@ -355,12 +361,12 @@ async def score_archive_attempt(session, attempt_id: int) -> tuple[float, str | 
     correct_orders = [q.order_num for q, flag in zip(questions, correct_flags) if flag]
     wrong_orders = [q.order_num for q, flag in zip(questions, correct_flags) if not flag]
 
-    if test.calibrated:
+    if test.calibrated and test.scale_sd:
         bs = np.array(
             [q.b_difficulty if q.b_difficulty is not None else np.nan for q in questions]
         )
         theta = run_mle_single(responses, bs)
-        ball = theta_to_ball75(theta)
+        ball = theta_to_ball75(theta, test.scale_mean, test.scale_sd)
     else:
         theta = None
         ball = classic_ball(int(responses.sum()), len(questions))
