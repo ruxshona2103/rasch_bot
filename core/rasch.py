@@ -43,6 +43,7 @@ class AttemptResult(NamedTuple):
 MAX_BALL = 75.0
 SCALE_CENTER = 48.0
 SCALE_SPREAD = 13.0
+MAX_SCALE_SPREAD = 24.0  # eng yuqori ball A+ ga yetishi uchun shkala kengayishining chegarasi
 THETA_CAP = 4.0
 MIN_PARTICIPANTS_FOR_RASCH = 10  # 🆕 sinov uchun 50dan pasaytirildi — real ishga tushishda 50ga qaytariladi
 
@@ -64,8 +65,21 @@ def ball_to_grade(ball_75: float) -> str | None:
     return None
 
 
-def theta_to_ball75(theta: float, mean: float, sd: float) -> float:
-    ball = SCALE_CENTER + SCALE_SPREAD * (theta - mean) / sd
+def compute_scale(thetas) -> tuple[float, float, float]:
+    """Guruh o'rtachasi, og'ishi va kengayishi. Eng ko'p ishlagan o'quvchi
+    (eng yuqori theta) kamida A+ chegarasiga (GRADE_TABLE[0]) chiqishi uchun
+    kengayish kerak bo'lsa oshiriladi (MAX_SCALE_SPREAD gacha)."""
+    mean = float(np.mean(thetas))
+    sd = float(np.std(thetas)) or 1.0
+    z_max = (float(np.max(thetas)) - mean) / sd
+    spread = SCALE_SPREAD
+    if z_max > 0:
+        spread = min(MAX_SCALE_SPREAD, max(SCALE_SPREAD, (GRADE_TABLE[0][0] - SCALE_CENTER) / z_max))
+    return mean, sd, spread
+
+
+def theta_to_ball75(theta: float, mean: float, sd: float, spread: float) -> float:
+    ball = SCALE_CENTER + spread * (theta - mean) / sd
     return round(max(0.0, min(MAX_BALL, ball)), 1)
 
 
@@ -250,14 +264,13 @@ async def _score_attempts(session, questions: list, attempts: list) -> tuple[lis
 
     if use_rasch:
         thetas, bs = run_jmle(matrix)
-        scale_mean = float(np.mean(thetas))
-        scale_sd = float(np.std(thetas)) or 1.0
-        await set_test_scale(session, questions[0].test_id, scale_mean, scale_sd)
+        scale_mean, scale_sd, scale_spread = compute_scale(thetas)
+        await set_test_scale(session, questions[0].test_id, scale_mean, scale_sd, scale_spread)
         for j, q in enumerate(questions):
             b_val = bs[j]
             await set_question_b_difficulty(session, q.question_id, None if np.isnan(b_val) else float(b_val))
         for i, attempt in enumerate(attempts):
-            ball = theta_to_ball75(float(thetas[i]), scale_mean, scale_sd)
+            ball = theta_to_ball75(float(thetas[i]), scale_mean, scale_sd, scale_spread)
             grade = ball_to_grade(ball)
             correct_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 1]
             wrong_orders = [questions[j].order_num for j in range(len(questions)) if matrix[i, j] == 0]
@@ -361,12 +374,12 @@ async def score_archive_attempt(session, attempt_id: int) -> tuple[float, str | 
     correct_orders = [q.order_num for q, flag in zip(questions, correct_flags) if flag]
     wrong_orders = [q.order_num for q, flag in zip(questions, correct_flags) if not flag]
 
-    if test.calibrated and test.scale_sd:
+    if test.calibrated and test.scale_sd and test.scale_spread:
         bs = np.array(
             [q.b_difficulty if q.b_difficulty is not None else np.nan for q in questions]
         )
         theta = run_mle_single(responses, bs)
-        ball = theta_to_ball75(theta, test.scale_mean, test.scale_sd)
+        ball = theta_to_ball75(theta, test.scale_mean, test.scale_sd, test.scale_spread)
     else:
         theta = None
         ball = classic_ball(int(responses.sum()), len(questions))

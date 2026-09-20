@@ -63,6 +63,7 @@ class Test(Base):
     # nisbatan hisoblanadi (z-ball); arxiv (MLE) ham aynan shu qiymatlar bilan.
     scale_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
     scale_sd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scale_spread: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

@@ -83,8 +83,10 @@ async def create_test(
     return test
 
 
-async def set_test_scale(session: AsyncSession, test_id: int, mean: float, sd: float) -> None:
-    await session.execute(update(Test).where(Test.test_id == test_id).values(scale_mean=mean, scale_sd=sd))
+async def set_test_scale(session: AsyncSession, test_id: int, mean: float, sd: float, spread: float) -> None:
+    await session.execute(
+        update(Test).where(Test.test_id == test_id).values(scale_mean=mean, scale_sd=sd, scale_spread=spread)
+    )
     await session.commit()
 
 
@@ -385,6 +387,11 @@ async def delete_test_completely(session: AsyncSession, test_id: int, admin_id: 
         select(Attempt.attempt_id).where(Attempt.test_id == test_id)
     )
     attempt_ids = [row[0] for row in attempt_ids_result.all()]
+    question_ids_result = await session.execute(select(Question.question_id).where(Question.test_id == test_id))
+    question_ids = [row[0] for row in question_ids_result.all()]
+    if question_ids:
+        await session.execute(delete(AiVerdict).where(AiVerdict.question_id.in_(question_ids)))
+    await session.execute(delete(Appeal).where(Appeal.test_id == test_id))
     if attempt_ids:
         await session.execute(delete(Answer).where(Answer.attempt_id.in_(attempt_ids)))
     await session.execute(delete(Attempt).where(Attempt.test_id == test_id))
