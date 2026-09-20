@@ -244,6 +244,16 @@ async def process_method(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
+# ---------- Variantlar sonini tanlash (4/5/6) -- barcha "to'g'ri javob" bosqichlarida ----------
+
+@router.callback_query(F.data.startswith("optcnt:"))
+async def choose_option_count(callback: CallbackQuery, state: FSMContext) -> None:
+    n = int(callback.data.split(":", 1)[1])
+    await state.update_data(opt_count=n)
+    await callback.message.edit_reply_markup(reply_markup=manual_closed_answer_keyboard(n))
+    await callback.answer(f"{n} ta variant (A–{chr(ord('A') + n - 1)}) tanlandi. Keyingi savollar ham shunday bo'ladi.")
+
+
 # ================= PDF USULI =================
 
 @router.message(TestCreate.waiting_pdf, F.document)
@@ -287,8 +297,8 @@ async def _ask_pdf_answer(message: Message, state: FSMContext) -> None:
 
     if qtype == "yopiq":
         await message.answer(
-            f"{order_num}/{total} — to'g'ri javobni tanlang:",
-            reply_markup=manual_closed_answer_keyboard(),
+            f"{order_num}/{total} — to'g'ri javobni tanlang (variantlar sonini pastdan o'zgartirishingiz mumkin):",
+            reply_markup=manual_closed_answer_keyboard(data.get("opt_count", 4)),
         )
     else:
         await message.answer(
@@ -342,6 +352,7 @@ async def _save_pdf_answer(
         order_num=order_num,
         qtype=data["pdf_current_qtype"],
         correct_answer=answer,
+        option_count=data.get("opt_count", 4) if data["pdf_current_qtype"] == "yopiq" else 4,
     )
     await message.answer(f"✅ {order_num}-savol saqlandi.")
     await state.update_data(pdf_order=order_num + 1)
@@ -439,7 +450,10 @@ async def manual_process_options_invalid(message: Message) -> None:
 async def _ask_manual_answer(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     if data["current_qtype"] == "yopiq":
-        await message.answer("To'g'ri javobni tanlang:", reply_markup=manual_closed_answer_keyboard())
+        await message.answer(
+            "To'g'ri javobni tanlang (variantlar sonini pastdan o'zgartirishingiz mumkin):",
+            reply_markup=manual_closed_answer_keyboard(data.get("opt_count", 4)),
+        )
     else:
         await message.answer(
             "To'g'ri javobni yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
@@ -481,6 +495,7 @@ async def _save_manual_question(
         correct_answer=answer,
         text=data.get("current_text"),
         image_file_id=data.get("current_image_file_id"),
+        option_count=data.get("opt_count", 4) if data["current_qtype"] == "yopiq" else 4,
     )
     await state.update_data(manual_order=order_num + 1)
     await message.answer(

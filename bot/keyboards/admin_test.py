@@ -61,16 +61,23 @@ def manual_qtype_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def manual_closed_answer_keyboard() -> InlineKeyboardMarkup:
+OPTION_COUNTS = (4, 5, 6)
+
+
+def manual_closed_answer_keyboard(option_count: int = 4) -> InlineKeyboardMarkup:
+    """To'g'ri javob tugmalari (A..) + variantlar sonini tanlash qatori."""
+    letters = [chr(ord("A") + i) for i in range(option_count)]
+    counts = [
+        InlineKeyboardButton(
+            text=f"{'✅ ' if n == option_count else ''}{n} variant", callback_data=f"optcnt:{n}"
+        )
+        for n in OPTION_COUNTS
+    ]
     return with_cancel_row(
         InlineKeyboardMarkup(
             inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="A", callback_data="answer:A"),
-                    InlineKeyboardButton(text="B", callback_data="answer:B"),
-                    InlineKeyboardButton(text="C", callback_data="answer:C"),
-                    InlineKeyboardButton(text="D", callback_data="answer:D"),
-                ]
+                [InlineKeyboardButton(text=l, callback_data=f"answer:{l}") for l in letters],
+                counts,
             ]
         )
     )

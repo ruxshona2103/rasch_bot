@@ -103,6 +103,7 @@ async def add_question(
     correct_answer: str,
     text: str | None = None,
     image_file_id: str | None = None,
+    option_count: int = 4,
 ) -> Question:
     question = Question(
         test_id=test_id,
@@ -111,6 +112,7 @@ async def add_question(
         image_file_id=image_file_id,
         qtype=qtype,
         correct_answer=correct_answer,
+        option_count=option_count,
     )
     session.add(question)
     await session.commit()
@@ -132,12 +134,15 @@ async def update_question(
     correct_answer: str,
     text: str | None,
     image_file_id: str | None,
+    option_count: int = 4,
 ) -> None:
     """🆕 Mavjud savolni yangi kontent bilan almashtiradi (order_num o'zgarmaydi)."""
     await session.execute(
         update(Question)
         .where(Question.question_id == question_id)
-        .values(qtype=qtype, correct_answer=correct_answer, text=text, image_file_id=image_file_id)
+        .values(
+            qtype=qtype, correct_answer=correct_answer, text=text, image_file_id=image_file_id, option_count=option_count
+        )
     )
     await session.commit()
 

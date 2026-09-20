@@ -188,7 +188,7 @@
       if (last && last.key === key) last.items.push(q); else groups.push({ key, items: [q] });
     });
     const sheets = groups.map((g) => {
-      const title = g.key === "o" ? "Ochiq savollar — javobni yozing" : (g.key === "c6" ? "Yopiq savollar (A–F)" : "Yopiq savollar (A–D)");
+      const title = g.key === "o" ? "Ochiq savollar — javobni yozing" : `Yopiq savollar (A–${String.fromCharCode(64 + Number(g.key.slice(1)))})`;
       return `<div class="section-title">${title}</div><div class="sheet">${g.items.map(rowHtml).join("")}</div>`;
     }).join("");
 

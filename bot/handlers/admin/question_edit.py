@@ -135,7 +135,10 @@ async def add_options_invalid(message: Message) -> None:
 async def _ask_add_answer(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     if data["edit_qtype"] == "yopiq":
-        await message.answer("To'g'ri javobni tanlang:", reply_markup=manual_closed_answer_keyboard())
+        await message.answer(
+            "To'g'ri javobni tanlang (variantlar sonini pastdan o'zgartirishingiz mumkin):",
+            reply_markup=manual_closed_answer_keyboard(data.get("opt_count", 4)),
+        )
     else:
         await message.answer(
             "To'g'ri javobni yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
@@ -168,6 +171,7 @@ async def _save_added_question(message: Message, state: FSMContext, session: Asy
         correct_answer=answer,
         text=data.get("edit_text"),
         image_file_id=data.get("edit_image_file_id"),
+        option_count=data.get("opt_count", 4) if data["edit_qtype"] == "yopiq" else 4,
     )
     test_id = data["edit_test_id"]
     order = data["edit_order"]
@@ -332,7 +336,10 @@ async def edit_options_invalid(message: Message) -> None:
 async def _ask_edit_answer(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     if data["edit_qtype"] == "yopiq":
-        await message.answer("To'g'ri javobni tanlang:", reply_markup=manual_closed_answer_keyboard())
+        await message.answer(
+            "To'g'ri javobni tanlang (variantlar sonini pastdan o'zgartirishingiz mumkin):",
+            reply_markup=manual_closed_answer_keyboard(data.get("opt_count", 4)),
+        )
     else:
         await message.answer(
             "To'g'ri javobni yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
@@ -364,6 +371,7 @@ async def _save_edited_question(message: Message, state: FSMContext, session: As
         correct_answer=answer,
         text=data.get("edit_text"),
         image_file_id=data.get("edit_image_file_id"),
+        option_count=data.get("opt_count", 4) if data["edit_qtype"] == "yopiq" else 4,
     )
     test_id = data["edit_test_id"]
     order = data["edit_order"]
