@@ -66,9 +66,5 @@ class Settings(BaseSettings):
     def miniapp_url(self) -> str:
         return f"https://{self.MINIAPP_DOMAIN}"
 
-    @property
-    def admin_miniapp_url(self) -> str:
-        return f"https://{self.MINIAPP_DOMAIN}/admin"
-
 
 settings = Settings()

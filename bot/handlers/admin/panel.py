@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, Message
 
 from bot.config import settings
 from bot.filters.admin import IsAdmin
-from bot.keyboards.admin import MINIAPP_BUTTON_TEXT, admin_miniapp_keyboard, admin_panel_keyboard
+from bot.keyboards.admin import admin_panel_keyboard
 from bot.keyboards.main_menu import main_menu_keyboard
 
 router = Router(name="admin_panel")
@@ -34,14 +34,6 @@ async def open_admin_panel(message: Message) -> None:
     await message.answer(
         "👨‍💼 ADMIN PANEL",
         reply_markup=admin_panel_keyboard(),
-    )
-
-
-@router.message(F.text == MINIAPP_BUTTON_TEXT)
-async def open_admin_miniapp(message: Message) -> None:
-    await message.answer(
-        "Testlar natijalari, reyting va Excel eksport:",
-        reply_markup=admin_miniapp_keyboard(),
     )
 
 
