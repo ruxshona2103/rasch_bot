@@ -193,9 +193,11 @@
       return `<div class="qrow" data-order="${q.order_num}"><div class="qn${saved}" id="qn-${q.order_num}">${q.order_num}.</div>
         <div class="opts">${letters.map((l) => `<button type="button" class="opt-btn${cur === l ? " selected" : ""}" data-l="${l}">${l}</button>`).join("")}</div></div>`;
     }
-    return `<div class="qrow" data-order="${q.order_num}"><div class="qn${saved}" id="qn-${q.order_num}">${q.order_num}.</div>
-      <div class="open-wrap"><input class="open-input" type="text" autocomplete="off" placeholder="Javob..." value="${esc(cur || "")}" />
-      <button type="button" class="kb-btn" title="Matematik klaviatura">⌨️</button></div></div>`;
+    return `<div class="qrow open" data-order="${q.order_num}"><div class="qn${saved}" id="qn-${q.order_num}">${q.order_num}.</div>
+      <div class="open-col"><div class="open-wrap"><input class="open-input" type="text" autocomplete="off" autocapitalize="off" placeholder="Javob..." value="${esc(cur || "")}" />
+      <button type="button" class="kb-btn" title="Matematik klaviatura">⌨️</button></div>
+      <div class="preview" id="pv-${q.order_num}">${cur && window.mathToHtml ? window.mathToHtml(cur) : ""}</div>
+      <div class="hint" id="hint-${q.order_num}"></div></div></div>`;
   }
 
   function updateProgress(total) {
@@ -211,13 +213,28 @@
     el.className = "qn" + (cls ? " " + cls : "");
   }
 
-  async function save(order, answer) {
+  function setHint(order, text, cls) {
+    const el = document.getElementById("hint-" + order);
+    if (!el) return false;
+    el.textContent = text;
+    el.className = "hint" + (cls ? " " + cls : "");
+    return true;
+  }
+
+  // silent=true: yozib turilganda (yarim ifoda bo'lishi mumkin) xato ko'rsatilmaydi
+  async function save(order, answer, silent) {
     try {
       await apiPost("/api/answer", { attempt_id: exam.attemptId, order_num: order, answer });
       exam.answers[order] = answer;
       mark(order, "saved");
+      setHint(order, "");
       updateProgress();
-    } catch (e) { mark(order, "err"); toast(`${order}-savol: ${e.message}`); buzz("error"); }
+    } catch (e) {
+      if (silent) { mark(order, "pend"); return; }
+      mark(order, "err");
+      buzz("error");
+      if (!setHint(order, "❌ " + e.message, "err")) toast(`${order}-savol: ${e.message}`);
+    }
   }
 
   function wireRow(q) {
@@ -233,19 +250,47 @@
       return;
     }
     const input = row.querySelector(".open-input");
+    const preview = document.getElementById("pv-" + q.order_num);
     let t = null;
+    const fix = () => {
+      // Kompyuter tilida "/" o'rniga chiqadigan belgilarni to'g'rilaymiz
+      const v = input.value;
+      const nv = v.replace(/[?÷:]/g, "/").replace(/×/g, "*").replace(/[−–—]/g, "-");
+      if (nv !== v) {
+        const pos = input.selectionStart;
+        input.value = nv;
+        input.setSelectionRange(pos, pos);
+      }
+    };
     input.addEventListener("focus", () => { kpTarget = input; if (kpOpen) setNativeKb(false); });
-    input.addEventListener("input", () => {
-      clearTimeout(t); mark(q.order_num, "");
-      t = setTimeout(() => { const v = input.value.trim(); if (v) save(q.order_num, v); }, 700);
+    input.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && (e.key === "/" || e.code === "Slash")) {
+        e.preventDefault();
+        const p = input.selectionStart;
+        input.value = input.value.slice(0, p) + "/" + input.value.slice(input.selectionEnd);
+        input.setSelectionRange(p + 1, p + 1);
+        input.dispatchEvent(new Event("input"));
+      }
     });
-    input.addEventListener("blur", () => { clearTimeout(t); const v = input.value.trim(); if (v && v !== exam.answers[q.order_num]) save(q.order_num, v); });
+    input.addEventListener("input", () => {
+      fix();
+      if (preview) preview.innerHTML = window.mathToHtml ? window.mathToHtml(input.value) : "";
+      clearTimeout(t); mark(q.order_num, ""); setHint(q.order_num, "");
+      t = setTimeout(() => { const v = input.value.trim(); if (v) save(q.order_num, v, true); }, 700);
+    });
+    input.addEventListener("blur", () => {
+      clearTimeout(t);
+      const v = input.value.trim();
+      if (v && v !== exam.answers[q.order_num]) save(q.order_num, v, false);
+    });
     row.querySelector(".kb-btn").addEventListener("click", () => (kpOpen && kpTarget === input ? closeKeypad() : openKeypad(input)));
   }
 
   function onFinish() {
     const left = exam.questions.length - answered();
-    const msg = left > 0 ? `⚠️ ${left} savol belgilanmagan. Rostdan yakunlaymizmi?` : "Testni yakunlaysizmi?";
+    const bad = document.querySelectorAll(".qn.err, .qn.pend").length;
+    let msg = left > 0 ? `⚠️ ${left} savol belgilanmagan. Rostdan yakunlaymizmi?` : "Testni yakunlaysizmi?";
+    if (bad > 0) msg = `⚠️ ${bad} ta javob noto'g'ri yozilgani uchun saqlanmagan. ` + msg;
     const go = async () => {
       try {
         const r = await apiPost("/api/finish", { attempt_id: exam.attemptId });
