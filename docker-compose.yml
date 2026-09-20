@@ -44,6 +44,25 @@ services:
     command: >
       sh -c "python -m scripts.init_db && python -m bot.main"
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${MINIAPP_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./webapp/student:/srv/student
+      - ./webapp/admin:/srv/admin
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - bot
+
 volumes:
   pg_data:
   redis_data:
+  caddy_data:
+  caddy_config:
