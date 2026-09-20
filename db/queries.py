@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -8,6 +8,7 @@ from db.models import (
     AdminLog,
     Answer,
     Appeal,
+    AiVerdict,
     Attempt,
     BotSetting,
     Payment,
@@ -755,3 +756,71 @@ async def resolve_appeal(
         session.add(AdminLog(admin_id=admin_id, action=f"appeal_{status}", target=f"appeal_id={appeal_id}"))
     await session.commit()
     return appeal
+
+
+# ---------------- AI hakam keshi ----------------
+
+
+async def get_ai_verdict_cache(session: AsyncSession, question_ids: list[int]) -> dict[tuple[int, str], tuple[str, bool]]:
+    if not question_ids:
+        return {}
+    result = await session.execute(select(AiVerdict).where(AiVerdict.question_id.in_(question_ids)))
+    return {(v.question_id, v.answer_norm): (v.correct_answer, v.verdict) for v in result.scalars().all()}
+
+
+async def save_ai_verdicts(session: AsyncSession, rows: list[tuple[int, str, str, bool]]) -> None:
+    for question_id, answer_norm, correct_answer, verdict in rows:
+        stmt = pg_insert(AiVerdict).values(
+            question_id=question_id, answer_norm=answer_norm, correct_answer=correct_answer, verdict=verdict
+        )
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_ai_verdict", set_={"correct_answer": correct_answer, "verdict": verdict}
+        )
+        await session.execute(stmt)
+    await session.commit()
+
+
+# ---------------- Mini App qoralamasi: 5 daqiqalik "kesh" ----------------
+
+DRAFT_TTL_MINUTES = 5
+
+
+async def touch_attempt(session: AsyncSession, attempt_id: int) -> None:
+    await session.execute(update(Attempt).where(Attempt.attempt_id == attempt_id).values(last_seen_at=func.now()))
+    await session.commit()
+
+
+async def clear_stale_draft(session: AsyncSession, attempt_id: int) -> bool:
+    """Urinish davom etayotgan bo'lib, Mini App 5 daqiqadan beri ko'rinmagan
+    bo'lsa -- javoblari o'chiriladi va True qaytadi (atomik: ikki marta o'chirmaydi)."""
+    result = await session.execute(
+        update(Attempt)
+        .where(
+            Attempt.attempt_id == attempt_id,
+            Attempt.status == "davom_etmoqda",
+            Attempt.last_seen_at.isnot(None),
+            Attempt.last_seen_at < func.now() - timedelta(minutes=DRAFT_TTL_MINUTES),
+        )
+        .values(last_seen_at=func.now())
+        .returning(Attempt.attempt_id)
+    )
+    cleared = result.first() is not None
+    if cleared:
+        await session.execute(delete(Answer).where(Answer.attempt_id == attempt_id))
+    await session.commit()
+    return cleared
+
+
+async def clear_all_stale_drafts(session: AsyncSession) -> int:
+    result = await session.execute(
+        select(Attempt.attempt_id).where(
+            Attempt.status == "davom_etmoqda",
+            Attempt.last_seen_at.isnot(None),
+            Attempt.last_seen_at < func.now() - timedelta(minutes=DRAFT_TTL_MINUTES),
+        )
+    )
+    count = 0
+    for (attempt_id,) in result.all():
+        if await clear_stale_draft(session, attempt_id):
+            count += 1
+    return count

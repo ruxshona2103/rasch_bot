@@ -151,10 +151,33 @@
       if (d.attempt) exam.attemptId = d.attempt.attempt_id;
       else exam.attemptId = (await apiPost("/api/attempt/start", { test_id: Number(testId) })).attempt_id;
       renderExam();
+      startHeartbeat();
     } catch (e) { showError(e.message); }
   }
 
   const answered = () => Object.keys(exam.answers).length;
+
+  // Ilova ochiq ekanini serverga bildirib turamiz; 5 daqiqa signal bo'lmasa server
+  // qoralama javoblarni o'chiradi (yopib ketilgan/aloqa uzilgan holat).
+  let hbTimer = null;
+  function stopHeartbeat() { clearInterval(hbTimer); hbTimer = null; }
+  async function beat() {
+    if (!exam || !exam.attemptId) return;
+    try {
+      const r = await apiPost("/api/heartbeat", { attempt_id: exam.attemptId });
+      if (r.finished) { stopHeartbeat(); return; }
+      if (r.cleared) {
+        exam.answers = {};
+        if (currentTab === "home" && document.querySelector(".finish-btn")) renderExam();
+        toast("Uzoq vaqt aloqa bo'lmadi: javoblar tozalandi, qaytadan kiriting.");
+      }
+    } catch (e) { /* aloqa yo'q -- keyingi urinishda */ }
+  }
+  function startHeartbeat() {
+    stopHeartbeat();
+    hbTimer = setInterval(beat, 20000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) beat(); });
+  }
 
   function renderExam() {
     const total = exam.questions.length;
@@ -294,7 +317,7 @@
     const go = async () => {
       try {
         const r = await apiPost("/api/finish", { attempt_id: exam.attemptId });
-        closeKeypad(); buzz("success");
+        closeKeypad(); stopHeartbeat(); buzz("success");
         if (r.mode === "arxiv") {
           render(`<div class="hero"><div class="who">👤 ${esc(exam.user.full_name)}</div><h1>✅ Test yakunlandi!</h1></div>
             <div class="stats"><div class="stat"><div class="num">${r.ball_75}</div><div class="label">Ball / 75</div></div>

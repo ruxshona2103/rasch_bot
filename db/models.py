@@ -119,6 +119,9 @@ class Attempt(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(15), default="davom_etmoqda")
     # davom_etmoqda | yakunlangan | vaqt_tugagan
+    # 🆕 Mini App ochiq ekanini bildiruvchi oxirgi "yurak urishi": 5 daqiqa kelmasa
+    # qoralama javoblar tozalanadi (None -- eski bot rejimi, tegilmaydi).
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     theta: Mapped[float | None] = mapped_column(Float, nullable=True)
     ball_75: Mapped[float | None] = mapped_column(Float, nullable=True)
     grade: Mapped[str | None] = mapped_column(String(3), nullable=True)
@@ -176,4 +179,17 @@ class Appeal(Base):
     # kutilmoqda | kalit_tuzatildi | savol_chiqarildi | rad_etildi
     admin_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+# 🆕 AI hakam natijalari keshi: bir xil (savol, javob) uchun qayta so'ralmaydi
+class AiVerdict(Base):
+    __tablename__ = "ai_verdicts"
+    __table_args__ = (UniqueConstraint("question_id", "answer_norm", name="uq_ai_verdict"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.question_id"))
+    answer_norm: Mapped[str] = mapped_column(String(80), nullable=False)
+    correct_answer: Mapped[str] = mapped_column(Text, nullable=False)  # kalit o'zgarsa kesh eskiradi
+    verdict: Mapped[bool] = mapped_column(Boolean, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

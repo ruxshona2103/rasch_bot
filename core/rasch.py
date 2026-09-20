@@ -24,6 +24,7 @@ from typing import NamedTuple
 
 import numpy as np
 
+from core.ai_check import ai_key, resolve_ai_verdicts
 from core.answer_key import is_open_answer_correct
 
 
@@ -124,12 +125,15 @@ def format_breakdown(correct_orders: list[int], wrong_orders: list[int]) -> str:
     return "\n".join(lines)
 
 
-def is_answer_correct(question, given_answer: str | None) -> bool:
+def is_answer_correct(question, given_answer: str | None, ai_verdicts: dict | None = None) -> bool:
     if not given_answer:
         return False
     if question.qtype == "yopiq":
         return given_answer.strip().upper() == question.correct_answer.strip().upper()
-    return is_open_answer_correct(given_answer, question.correct_answer)
+    if is_open_answer_correct(given_answer, question.correct_answer):
+        return True
+    # Aniq hisoblagich "noto'g'ri" degan bo'lsa, AI hakam hukmi (bo'lsa) hal qiladi
+    return bool(ai_verdicts and ai_verdicts.get((question.question_id, ai_key(given_answer)), False))
 
 
 def run_jmle(
@@ -232,10 +236,11 @@ async def _score_attempts(session, questions: list, attempts: list) -> tuple[lis
         return [], False
 
     matrix = np.zeros((len(attempts), len(questions)), dtype=int)
-    for i, attempt in enumerate(attempts):
-        answers = await get_answers_map(session, attempt.attempt_id)
+    answer_maps = [await get_answers_map(session, attempt.attempt_id) for attempt in attempts]
+    ai_verdicts = await resolve_ai_verdicts(session, questions, answer_maps)
+    for i, answers in enumerate(answer_maps):
         for j, q in enumerate(questions):
-            matrix[i, j] = 1 if is_answer_correct(q, answers.get(q.question_id)) else 0
+            matrix[i, j] = 1 if is_answer_correct(q, answers.get(q.question_id), ai_verdicts) else 0
 
     use_rasch = len(attempts) >= MIN_PARTICIPANTS_FOR_RASCH
     results: list[tuple] = []  # (attempt, ball, grade, theta, correct_orders, wrong_orders)
@@ -344,7 +349,8 @@ async def score_archive_attempt(session, attempt_id: int) -> tuple[float, str | 
         await set_attempt_result(session, attempt_id, None, 0.0, None)
         return 0.0, None, [], []
 
-    correct_flags = [is_answer_correct(q, answers.get(q.question_id)) for q in questions]
+    ai_verdicts = await resolve_ai_verdicts(session, questions, [answers])
+    correct_flags = [is_answer_correct(q, answers.get(q.question_id), ai_verdicts) for q in questions]
     responses = np.array([1 if flag else 0 for flag in correct_flags])
     correct_orders = [q.order_num for q, flag in zip(questions, correct_flags) if flag]
     wrong_orders = [q.order_num for q, flag in zip(questions, correct_flags) if not flag]

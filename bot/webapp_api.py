@@ -9,6 +9,7 @@ tekshiriladi -- shu orqali foydalanuvchi Telegram ID'si xavfsiz aniqlanadi
 (parolsiz, tokensiz -- Telegram Mini App'ning rasmiy usuli).
 """
 
+import asyncio
 import json
 import logging
 
@@ -16,12 +17,15 @@ from aiogram.types import BufferedInputFile
 from aiohttp import web
 
 from bot.config import settings
-from core.answer_key import is_valid_numeric_answer, normalize_open_answer
+from core.ai_check import answer_input_ok
+from core.answer_key import normalize_open_answer
 from core.export import build_results_excel
 from core.rasch import format_breakdown, score_archive_attempt
 from core.webapp_auth import validate_init_data
 from db.engine import async_session
 from db.queries import (
+    clear_all_stale_drafts,
+    clear_stale_draft,
     create_attempt,
     finish_attempt,
     get_answers_map,
@@ -34,6 +38,7 @@ from db.queries import (
     list_attempts_with_users_for_export,
     list_user_attempts,
     list_user_purchased_tests,
+    touch_attempt,
     upsert_answer,
 )
 
@@ -116,6 +121,8 @@ async def get_test_schema(request: web.Request) -> web.Response:
                         "finished": True,
                     }
                 )
+            await clear_stale_draft(session, attempt.attempt_id)
+            await touch_attempt(session, attempt.attempt_id)
             raw_answers = await get_answers_map(session, attempt.attempt_id)
             answers_map = {
                 q.order_num: raw_answers[q.question_id]
@@ -179,7 +186,37 @@ async def start_attempt(request: web.Request) -> web.Response:
         elif attempt.status != "davom_etmoqda":
             return _json_error("Siz bu testni allaqachon yakunlagansiz.", 409)
 
+        await touch_attempt(session, attempt.attempt_id)
         return web.json_response({"ok": True, "attempt_id": attempt.attempt_id})
+    except (KeyError, ValueError, TypeError, json.JSONDecodeError):
+        return _json_error("Noto'g'ri so'rov.")
+    finally:
+        await session.close()
+
+
+@routes.post("/api/heartbeat")
+async def heartbeat(request: web.Request) -> web.Response:
+    """Mini App ochiq ekanini bildiradi. Agar oldingi signaldan 5 daqiqadan ko'p
+    o'tgan bo'lsa (ilova yopilgan/aloqa uzilgan), qoralama javoblar tozalanadi."""
+    auth = await _authenticate(request)
+    if auth is None:
+        return _json_error("Ro'yxatdan o'tmagansiz yoki sessiya eskirgan.", 401)
+    session, user = auth
+    try:
+        body = await request.json()
+        attempt_id = int(body["attempt_id"])
+
+        from db.models import Attempt
+
+        attempt = await session.get(Attempt, attempt_id)
+        if attempt is None or attempt.user_pk != user.user_pk:
+            return _json_error("Urinish topilmadi.", 404)
+        if attempt.status != "davom_etmoqda":
+            return web.json_response({"ok": True, "finished": True})
+
+        cleared = await clear_stale_draft(session, attempt_id)
+        await touch_attempt(session, attempt_id)
+        return web.json_response({"ok": True, "cleared": cleared})
     except (KeyError, ValueError, TypeError, json.JSONDecodeError):
         return _json_error("Noto'g'ri so'rov.")
     finally:
@@ -206,6 +243,7 @@ async def save_answer(request: web.Request) -> web.Response:
         if attempt.status != "davom_etmoqda":
             return _json_error("Bu urinish allaqachon yakunlangan.", 409)
 
+        await clear_stale_draft(session, attempt_id)
         questions = await get_questions_for_test(session, attempt.test_id)
         question = next((q for q in questions if q.order_num == order_num), None)
         if question is None:
@@ -218,11 +256,12 @@ async def save_answer(request: web.Request) -> web.Response:
                 return _json_error(f"Javob {'/'.join(valid_letters)} dan biri bo'lishi kerak.")
             await upsert_answer(session, attempt_id, question.question_id, letter)
         else:
-            if not is_valid_numeric_answer(raw_answer):
+            if not answer_input_ok(raw_answer):
                 return _json_error("Javobni matematik ifoda sifatida yozing (12, 1/2, √2 kabi).")
             answer = normalize_open_answer(raw_answer)
             await upsert_answer(session, attempt_id, question.question_id, answer)
 
+        await touch_attempt(session, attempt_id)
         return web.json_response({"ok": True})
     except (KeyError, ValueError, TypeError, json.JSONDecodeError):
         return _json_error("Noto'g'ri so'rov.")
@@ -514,8 +553,21 @@ def create_webapp_app(bot=None) -> web.Application:
     return app
 
 
+async def _cleanup_loop() -> None:
+    while True:
+        await asyncio.sleep(60)
+        try:
+            async with async_session() as session:
+                count = await clear_all_stale_drafts(session)
+            if count:
+                logger.info("Eskirgan qoralamalar tozalandi: %d ta urinish", count)
+        except Exception:
+            logger.warning("Qoralama tozalash xatosi", exc_info=True)
+
+
 async def start_webapp_server(bot, host: str = "127.0.0.1", port: int = 8080) -> web.AppRunner:
     app = create_webapp_app(bot)
+    app["cleanup_task"] = asyncio.create_task(_cleanup_loop())
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host, port)

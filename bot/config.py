@@ -25,6 +25,11 @@ class Settings(BaseSettings):
 
     TIMEZONE: str = "Asia/Tashkent"
 
+    # 🆕 Ochiq savol javoblarini AI bilan qo'shimcha tekshirish (ixtiyoriy).
+    # Kalit bo'sh bo'lsa AI o'chiq -- faqat aniq hisoblagich ishlaydi.
+    ANTHROPIC_API_KEY: str = ""
+    AI_MODEL: str = "claude-haiku-4-5-20251001"
+
     # 🆕 Mini App uchun domen (Caddy shu manzilda HTTPS bilan xizmat qiladi)
     MINIAPP_DOMAIN: str = ""
 

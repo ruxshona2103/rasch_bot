@@ -23,7 +23,8 @@ from bot.keyboards.exam import (
 from bot.keyboards.appeal import appeal_button_keyboard
 from bot.keyboards.main_menu import main_menu_keyboard
 from bot.states.exam import Exam
-from core.answer_key import is_valid_numeric_answer, normalize_open_answer
+from core.ai_check import answer_input_ok
+from core.answer_key import normalize_open_answer
 from core.rasch import format_breakdown, score_archive_attempt
 from db.queries import (
     auto_close_attempt,
@@ -210,7 +211,7 @@ async def input_open_answer(message: Message, session: AsyncSession, state: FSMC
     # 🆕 So'z bilan yozilgan javobni ("o'n ikki") umuman qabul qilmaymiz —
     # aks holda o'quvchi nima uchun noto'g'ri chiqqanini hech qachon bilolmas edi.
     # Son, kasr, ildiz (√, sqrt, cbrt) va pi ifodalari qabul qilinadi.
-    if not is_valid_numeric_answer(message.text):
+    if not answer_input_ok(message.text):
         await message.answer(
             "❗️ Javobni matematik ifoda sifatida yozing: 12, -3,5, 1/2, √2, "
             "sqrt(5), 2*pi kabi.\n"
