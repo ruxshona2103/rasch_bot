@@ -1,4 +1,13 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
+from bot.config import settings
+
+
+def open_miniapp_keyboard(test_id: int) -> InlineKeyboardMarkup:
+    url = f"{settings.miniapp_url}/?test_id={test_id}"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="📝 Javob varag'ini ochish", web_app=WebAppInfo(url=url))]]
+    )
 
 
 def _nav_row(order_num: int, total: int) -> list[InlineKeyboardButton]:

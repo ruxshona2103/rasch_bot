@@ -17,6 +17,7 @@ from bot.keyboards.exam import (
     closed_answer_keyboard,
     finish_confirm_keyboard,
     navigator_keyboard,
+    open_miniapp_keyboard,
     open_question_keyboard,
 )
 from bot.keyboards.appeal import appeal_button_keyboard
@@ -103,7 +104,7 @@ async def _render_question(target, session: AsyncSession, state: FSMContext) -> 
 
 
 @router.callback_query(F.data.startswith("examenter:"))
-async def enter_exam(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+async def enter_exam(callback: CallbackQuery, session: AsyncSession) -> None:
     test_id = int(callback.data.split(":")[1])
     test = await get_test(session, test_id)
     user = await get_user_by_telegram_id(session, callback.from_user.id)
@@ -128,26 +129,23 @@ async def enter_exam(callback: CallbackQuery, session: AsyncSession, state: FSMC
         await callback.answer("✅ Siz bu testni allaqachon yakunlagansiz.", show_alert=True)
         return
 
-    answers_map = await get_answers_map(session, attempt.attempt_id)
-    start_order = questions[-1].order_num
-    for q in questions:
-        if q.question_id not in answers_map:
-            start_order = q.order_num
-            break
-
-    await state.set_state(Exam.taking)
-    await state.update_data(attempt_id=attempt.attempt_id, test_id=test_id, current_order=start_order)
-
     await callback.answer()
     await callback.message.answer("🔴 Exam Mode boshlandi!\n⚠️ Javobingiz har bosishda darhol saqlanadi.")
 
     if test.pdf_file_id:
         await callback.message.answer_document(
             test.pdf_file_id,
-            caption="📄 Test savollari (to'liq fayl) — javoblarni pastdagi tugmalar orqali belgilang.",
+            caption="📄 Test savollari (to'liq fayl) — javoblarni pastdagi tugma orqali kiritasiz.",
         )
 
-    await _render_question(callback.message, session, state)
+    # 🆕 Javob kiritish endi Mini App orqali — bir sahifada barcha savollar,
+    # avtomatik saqlash. Eski bot-xabar rejimi (pastdagi handlerlar) hali
+    # kodda qoldi, lekin endi hech qayerdan chaqirilmaydi (orqaga moslik
+    # zaxira sifatida — kerak bo'lsa tezda qaytarish mumkin).
+    await callback.message.answer(
+        f"👇 \"{test.title}\" uchun javob varag'ini oching:",
+        reply_markup=open_miniapp_keyboard(test_id),
+    )
 
 
 @router.callback_query(Exam.taking, F.data == "examprev")

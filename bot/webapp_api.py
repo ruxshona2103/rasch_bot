@@ -12,10 +12,12 @@ tekshiriladi -- shu orqali foydalanuvchi Telegram ID'si xavfsiz aniqlanadi
 import json
 import logging
 
+from aiogram.types import BufferedInputFile
 from aiohttp import web
 
 from bot.config import settings
 from core.answer_key import is_valid_numeric_answer, normalize_open_answer
+from core.export import build_results_excel
 from core.rasch import format_breakdown, score_archive_attempt
 from core.webapp_auth import validate_init_data
 from db.engine import async_session
@@ -28,6 +30,8 @@ from db.queries import (
     get_test,
     get_user_by_telegram_id,
     has_purchase,
+    list_all_tests,
+    list_attempts_with_users_for_export,
     upsert_answer,
 )
 
@@ -52,6 +56,17 @@ async def _authenticate(request: web.Request):
     session = async_session()
     user = await get_user_by_telegram_id(session, telegram_id)
     if user is None:
+        await session.close()
+        return None
+    return session, user
+
+
+async def _authenticate_admin(request: web.Request):
+    auth = await _authenticate(request)
+    if auth is None:
+        return None
+    session, user = auth
+    if user.telegram_id not in settings.admin_ids:
         await session.close()
         return None
     return session, user
@@ -251,14 +266,118 @@ async def finish(request: web.Request) -> web.Response:
         await session.close()
 
 
-def create_webapp_app() -> web.Application:
+# ---------------- Admin ----------------
+
+
+@routes.get("/api/admin/tests")
+async def admin_list_tests(request: web.Request) -> web.Response:
+    auth = await _authenticate_admin(request)
+    if auth is None:
+        return _json_error("Ruxsat yo'q.", 403)
+    session, _user = auth
+    try:
+        tests = await list_all_tests(session)
+        payload = []
+        for t in tests:
+            rows = await list_attempts_with_users_for_export(session, t.test_id)
+            payload.append(
+                {
+                    "id": t.test_id,
+                    "title": t.title,
+                    "mode": t.mode,
+                    "status": t.status,
+                    "participants": len(rows),
+                }
+            )
+        return web.json_response({"ok": True, "tests": payload})
+    finally:
+        await session.close()
+
+
+@routes.get("/api/admin/tests/{test_id}")
+async def admin_test_results(request: web.Request) -> web.Response:
+    auth = await _authenticate_admin(request)
+    if auth is None:
+        return _json_error("Ruxsat yo'q.", 403)
+    session, _user = auth
+    try:
+        test_id = int(request.match_info["test_id"])
+        test = await get_test(session, test_id)
+        if test is None:
+            return _json_error("Test topilmadi.", 404)
+
+        rows = await list_attempts_with_users_for_export(session, test_id)
+        results = [
+            {
+                "rank": attempt.rank_position,
+                "public_id": user.public_id,
+                "full_name": user.full_name,
+                "username": user.username,
+                "telegram_id": user.telegram_id,
+                "kind": attempt.kind,
+                "status": attempt.status,
+                "ball_75": attempt.ball_75,
+                "grade": attempt.grade,
+            }
+            for attempt, user in rows
+        ]
+
+        grade_counts: dict[str, int] = {}
+        for r in results:
+            key = r["grade"] or "chegaradan past"
+            grade_counts[key] = grade_counts.get(key, 0) + 1
+
+        return web.json_response(
+            {
+                "ok": True,
+                "test": {"id": test.test_id, "title": test.title, "status": test.status, "mode": test.mode},
+                "participants": len(results),
+                "grade_counts": grade_counts,
+                "results": results,
+            }
+        )
+    finally:
+        await session.close()
+
+
+@routes.post("/api/admin/tests/{test_id}/export")
+async def admin_export_excel(request: web.Request) -> web.Response:
+    auth = await _authenticate_admin(request)
+    if auth is None:
+        return _json_error("Ruxsat yo'q.", 403)
+    session, user = auth
+    try:
+        test_id = int(request.match_info["test_id"])
+        test = await get_test(session, test_id)
+        if test is None:
+            return _json_error("Test topilmadi.", 404)
+
+        rows = await list_attempts_with_users_for_export(session, test_id)
+        if not rows:
+            return _json_error("Bu testda hali ishtirokchi yo'q.", 404)
+
+        excel_bytes = build_results_excel(test.title, rows)
+        safe_title = "".join(c if c.isalnum() else "_" for c in test.title)[:40]
+        bot = request.app["bot"]
+        await bot.send_document(
+            user.telegram_id,
+            BufferedInputFile(excel_bytes, filename=f"{safe_title}_natijalar.xlsx"),
+            caption=f"📊 \"{test.title}\" — {len(rows)} ta ishtirokchi natijasi.",
+        )
+        return web.json_response({"ok": True})
+    finally:
+        await session.close()
+
+
+def create_webapp_app(bot=None) -> web.Application:
     app = web.Application()
+    app["bot"] = bot
     app.add_routes(routes)
     return app
 
 
-async def start_webapp_server(host: str = "127.0.0.1", port: int = 8080) -> web.AppRunner:
-    app = create_webapp_app()
+async def start_webapp_server(bot, host: str = "127.0.0.1", port: int = 8080) -> web.AppRunner:
+    app = create_webapp_app(bot)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host, port)
