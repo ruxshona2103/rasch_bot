@@ -55,9 +55,10 @@ async def main() -> None:
     await recover_all_jobs(scheduler, bot)
     scheduler.start()
 
-    # 🆕 Mini App backend API — botning o'zi bilan bir jarayonda, faqat
-    # localhost:8080'da (Caddy /api/* orqali tashqariga ochadi).
-    await start_webapp_server()
+    # 🆕 Mini App backend API — botning o'zi bilan bir jarayonda. 0.0.0.0
+    # kerak (127.0.0.1 emas) — aks holda Caddy konteyneri (boshqa tarmoq
+    # interfeysidan ulanadi) 502 Bad Gateway beradi.
+    await start_webapp_server(host="0.0.0.0")
 
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot, scheduler=scheduler)
