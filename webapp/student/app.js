@@ -2,251 +2,329 @@
   "use strict";
 
   const app = document.getElementById("app");
+  const keypad = document.getElementById("keypad");
+  const toastEl = document.getElementById("toast");
+  const tabbar = document.getElementById("tabbar");
   const tg = window.Telegram && window.Telegram.WebApp;
 
-  function render(html) {
-    app.innerHTML = html;
-  }
+  const BRAND = `<div class="brand">🎓 Abdurashid Teacher bilan hammasi oson<small>Milliy sertifikat mock testlari</small></div>`;
 
-  function showError(message) {
-    render(`<div class="error">⚠️ ${escapeHtml(message)}</div>`);
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => (
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
       { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
     ));
   }
-
-  if (!tg) {
-    showError("Bu sahifa Telegram ichidan ochilishi kerak.");
-    return;
+  function render(html) { app.innerHTML = html; window.scrollTo(0, 0); }
+  function showError(m) { render(`<div class="error">⚠️ ${esc(m)}</div>`); }
+  let toastTimer = null;
+  function toast(m) {
+    toastEl.textContent = m; toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, 3000);
   }
 
-  tg.ready();
-  tg.expand();
-  if (tg.colorScheme) {
-    document.documentElement.dataset.theme = tg.colorScheme;
-  }
-  if (tg.onEvent) {
-    tg.onEvent("themeChanged", () => {
-      document.documentElement.dataset.theme = tg.colorScheme;
-    });
-  }
+  if (!tg) { showError("Bu sahifa Telegram ichidan ochilishi kerak."); tabbar.hidden = true; return; }
+  tg.ready(); tg.expand();
+  const applyTheme = () => { if (tg.colorScheme) document.documentElement.dataset.theme = tg.colorScheme; };
+  applyTheme();
+  if (tg.onEvent) tg.onEvent("themeChanged", applyTheme);
 
   const initData = tg.initData || "";
-  const params = new URLSearchParams(window.location.search);
-  const testId = params.get("test_id");
+  if (!initData) { showError("Sessiya aniqlanmadi. Botni qayta oching."); tabbar.hidden = true; return; }
 
-  if (!initData) {
-    showError("Sessiya aniqlanmadi. Botni qayta oching.");
-    return;
-  }
-  if (!testId) {
-    showError("Test tanlanmagan. Botdagi test ro'yxatidan \"Kirish\" tugmasini bosing.");
-    return;
-  }
-
-  function authHeaders(extra) {
-    return Object.assign({ Authorization: "tma " + initData }, extra || {});
-  }
-
+  const H = (extra) => Object.assign({ Authorization: "tma " + initData }, extra || {});
   async function apiGet(url) {
-    const res = await fetch(url, { headers: authHeaders() });
-    const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || "Xatolik yuz berdi.");
-    return data;
+    const r = await fetch(url, { headers: H() });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || "Xatolik yuz berdi.");
+    return d;
   }
-
   async function apiPost(url, body) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify(body),
+    const r = await fetch(url, { method: "POST", headers: H({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || "Xatolik yuz berdi.");
+    return d;
+  }
+  const buzz = (t) => { if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(t); };
+
+  /* ------------------------------ matematik klaviatura ------------------------------ */
+  const KEYS = [
+    ["7", "8", "9", "√(", "∛(", "π"],
+    ["4", "5", "6", "(", ")", "^"],
+    ["1", "2", "3", "+", "-", "*"],
+    ["0", ".", "/", ",", "⌫", "✕"],
+  ];
+  let kpTarget = null;
+  let kpOpen = false;
+
+  function buildKeypad() {
+    keypad.innerHTML = `<div class="grid">${KEYS.flat().map((k) => {
+      const cls = k === "✕" ? "close" : ("√(∛(π^⌫".includes(k) ? "fn" : "");
+      return `<button type="button" class="${cls}" data-k="${esc(k)}">${esc(k)}</button>`;
+    }).join("")}</div>`;
+    keypad.querySelectorAll("button").forEach((b) => {
+      b.addEventListener("pointerdown", (e) => e.preventDefault());
+      b.addEventListener("click", () => pressKey(b.dataset.k));
     });
-    const data = await res.json();
-    if (!res.ok || !data.ok) throw new Error(data.error || "Xatolik yuz berdi.");
-    return data;
   }
-
-  let state = { test: null, questions: [], attemptId: null, answers: {} };
-
-  async function boot() {
-    const data = await apiGet(`/api/tests/${encodeURIComponent(testId)}`);
-    if (data.finished) {
-      render(`<div class="error">✅ Siz bu testni allaqachon yakunlagansiz. Natijangizni botda "📊 Natijalarim" bo'limidan ko'ring.</div>`);
-      return;
-    }
-    state.test = data.test;
-    state.questions = data.questions;
-    state.answers = data.answers || {};
-
-    if (data.attempt) {
-      state.attemptId = data.attempt.attempt_id;
+  function setNativeKb(on) {
+    document.querySelectorAll(".open-input").forEach((i) => i.setAttribute("inputmode", on ? "text" : "none"));
+  }
+  function openKeypad(input) {
+    kpTarget = input; kpOpen = true;
+    keypad.hidden = false; setNativeKb(false);
+    input.focus();
+    document.body.style.paddingBottom = "420px";
+    input.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  function closeKeypad() {
+    kpOpen = false; keypad.hidden = true; setNativeKb(true);
+    document.body.style.paddingBottom = "";
+  }
+  function pressKey(k) {
+    if (k === "✕") { closeKeypad(); if (kpTarget) kpTarget.blur(); return; }
+    if (!kpTarget) return;
+    const el = kpTarget;
+    const s = el.selectionStart == null ? el.value.length : el.selectionStart;
+    const e = el.selectionEnd == null ? el.value.length : el.selectionEnd;
+    if (k === "⌫") {
+      if (s !== e) el.value = el.value.slice(0, s) + el.value.slice(e);
+      else if (s > 0) { el.value = el.value.slice(0, s - 1) + el.value.slice(s); el.setSelectionRange(s - 1, s - 1); return el.dispatchEvent(new Event("input")); }
+      el.setSelectionRange(s, s);
     } else {
-      const started = await apiPost("/api/attempt/start", { test_id: Number(testId) });
-      state.attemptId = started.attempt_id;
+      el.value = el.value.slice(0, s) + k + el.value.slice(e);
+      el.setSelectionRange(s + k.length, s + k.length);
     }
+    el.dispatchEvent(new Event("input"));
+  }
+  buildKeypad();
 
-    renderExam();
+  /* ------------------------------ tab navigatsiya ------------------------------ */
+  let currentTab = "home";
+  function setTab(tab) {
+    currentTab = tab;
+    closeKeypad();
+    tabbar.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    if (tab === "home") showHome();
+    else if (tab === "results") showResultsList();
+    else showProfile();
+  }
+  tabbar.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+
+  /* ------------------------------ bosh sahifa ------------------------------ */
+  async function showHome() {
+    render(`<div class="loading">Yuklanmoqda...</div>`);
+    try {
+      const d = await apiGet("/api/my-tests");
+      if (!d.tests.length) {
+        render(`<div class="hero"><h1>👋 Xush kelibsiz!</h1><div class="who">Hozircha sizda faol testlar yo'q. Botdagi "Jonli/Arxiv testlar" bo'limidan test tanlang.</div></div>${BRAND}`);
+        return;
+      }
+      const cards = d.tests.map((t) => {
+        let action = "";
+        if (t.can_enter) action = `<button class="btn" data-enter="${t.id}">▶️ Testni boshlash</button>`;
+        else if (t.finished) action = `<div class="meta" style="margin-top:8px">✅ Topshirilgan${t.ball_75 != null ? ` · <b>${t.ball_75}</b> ball ${t.grade ? "· " + esc(t.grade) : ""}` : " · natija kutilmoqda"}</div>`;
+        else action = `<div class="meta" style="margin-top:8px">⏳ Hali boshlanmagan</div>`;
+        return `<div class="card"><div class="title">${esc(t.title)}</div>
+          <div class="meta"><span class="pill">${t.mode === "jonli" ? "🔴 Jonli" : "📚 Arxiv"}</span></div>${action}</div>`;
+      }).join("");
+      render(`<div class="hero"><div class="who">Mening testlarim</div><h1>📝 Testlar</h1></div>${cards}${BRAND}`);
+      app.querySelectorAll("[data-enter]").forEach((b) => b.addEventListener("click", () => startExam(b.dataset.enter)));
+    } catch (e) { showError(e.message); }
   }
 
-  function answeredCount() {
-    return Object.keys(state.answers).length;
+  /* ------------------------------ imtihon ------------------------------ */
+  let exam = null;
+
+  async function startExam(testId) {
+    render(`<div class="loading">Yuklanmoqda...</div>`);
+    currentTab = "home";
+    tabbar.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === "home"));
+    try {
+      const d = await apiGet(`/api/tests/${encodeURIComponent(testId)}`);
+      if (d.finished) {
+        render(`<div class="hero"><div class="who">${esc(d.user.full_name)}</div><h1>✅ Siz bu testni yakunlagansiz</h1></div>
+          <div class="card">Natijangizni "Natijalar" yoki "Profil" bo'limidan ko'rishingiz mumkin.</div>${BRAND}`);
+        return;
+      }
+      exam = { test: d.test, user: d.user, questions: d.questions, answers: d.answers || {}, attemptId: null };
+      if (d.attempt) exam.attemptId = d.attempt.attempt_id;
+      else exam.attemptId = (await apiPost("/api/attempt/start", { test_id: Number(testId) })).attempt_id;
+      renderExam();
+    } catch (e) { showError(e.message); }
   }
+
+  const answered = () => Object.keys(exam.answers).length;
 
   function renderExam() {
-    const total = state.questions.length;
-    const answered = answeredCount();
-    const pct = total ? Math.round((answered / total) * 100) : 0;
-
-    const questionsHtml = state.questions
-      .map((q) => renderQuestion(q))
-      .join("");
+    const total = exam.questions.length;
+    const groups = [];
+    exam.questions.forEach((q) => {
+      const last = groups[groups.length - 1];
+      const key = q.qtype === "yopiq" ? "c" + q.option_count : "o";
+      if (last && last.key === key) last.items.push(q); else groups.push({ key, items: [q] });
+    });
+    const sheets = groups.map((g) => {
+      const title = g.key === "o" ? "Ochiq savollar — javobni yozing" : (g.key === "c6" ? "Yopiq savollar (A–F)" : "Yopiq savollar (A–D)");
+      return `<div class="section-title">${title}</div><div class="sheet">${g.items.map(rowHtml).join("")}</div>`;
+    }).join("");
 
     render(`
-      <div class="header">
-        <h1>📝 ${escapeHtml(state.test.title)}</h1>
-        <div class="progress-bar"><div style="width:${pct}%"></div></div>
-        <div class="progress-text" id="progressText">✅ Belgilangan: ${answered} / ${total}</div>
+      <div class="hero">
+        <div class="who">👤 ${esc(exam.user.full_name)}</div>
+        <h1>${esc(exam.test.title)}</h1>
+        <div class="progress-bar"><div id="pbar" style="width:0%"></div></div>
+        <div class="progress-text" id="ptext"></div>
       </div>
-      <div id="questions">${questionsHtml}</div>
-      <div class="footer">
-        <button class="finish-btn" id="finishBtn">🏁 Yakunlash</button>
-      </div>
+      ${sheets}
+      ${BRAND}
+      <div class="footer"><div class="in"><button class="finish-btn" id="finishBtn">🏁 Testni yakunlash</button></div></div>
     `);
-
+    updateProgress(total);
     document.getElementById("finishBtn").addEventListener("click", onFinish);
-    state.questions.forEach((q) => wireQuestion(q));
+    exam.questions.forEach(wireRow);
   }
 
-  function renderQuestion(q) {
-    const current = state.answers[q.order_num];
+  function rowHtml(q) {
+    const cur = exam.answers[q.order_num];
+    const saved = cur ? " saved" : "";
     if (q.qtype === "yopiq") {
       const letters = Array.from({ length: q.option_count }, (_, i) => String.fromCharCode(65 + i));
-      const gridClass = q.option_count > 4 ? "options opt6" : "options";
-      const buttons = letters
-        .map(
-          (l) =>
-            `<button type="button" class="opt-btn${current === l ? " selected" : ""}" data-order="${q.order_num}" data-letter="${l}">${l}</button>`
-        )
-        .join("");
-      return `
-        <div class="question" data-order="${q.order_num}">
-          <div class="qnum">${q.order_num}-savol</div>
-          <div class="${gridClass}">${buttons}</div>
-          <div class="save-hint" id="hint-${q.order_num}"></div>
-        </div>
-      `;
+      return `<div class="qrow" data-order="${q.order_num}"><div class="qn${saved}" id="qn-${q.order_num}">${q.order_num}.</div>
+        <div class="opts">${letters.map((l) => `<button type="button" class="opt-btn${cur === l ? " selected" : ""}" data-l="${l}">${l}</button>`).join("")}</div></div>`;
     }
-    return `
-      <div class="question" data-order="${q.order_num}">
-        <div class="qnum">${q.order_num}-savol (ochiq)</div>
-        <input
-          class="open-input"
-          type="text"
-          inputmode="text"
-          placeholder="Masalan: 12, 1/2, √2, 2*pi"
-          value="${current ? escapeHtml(current) : ""}"
-          data-order="${q.order_num}"
-        />
-        <div class="save-hint" id="hint-${q.order_num}"></div>
-      </div>
-    `;
+    return `<div class="qrow" data-order="${q.order_num}"><div class="qn${saved}" id="qn-${q.order_num}">${q.order_num}.</div>
+      <div class="open-wrap"><input class="open-input" type="text" autocomplete="off" placeholder="Javob..." value="${esc(cur || "")}" />
+      <button type="button" class="kb-btn" title="Matematik klaviatura">⌨️</button></div></div>`;
   }
 
-  function setHint(orderNum, text, cls) {
-    const el = document.getElementById(`hint-${orderNum}`);
+  function updateProgress(total) {
+    const n = answered();
+    total = total || exam.questions.length;
+    document.getElementById("pbar").style.width = (total ? Math.round((n / total) * 100) : 0) + "%";
+    document.getElementById("ptext").textContent = `✅ Belgilangan: ${n} / ${total}`;
+  }
+
+  function mark(order, cls) {
+    const el = document.getElementById("qn-" + order);
     if (!el) return;
-    el.textContent = text;
-    el.className = "save-hint" + (cls ? " " + cls : "");
+    el.className = "qn" + (cls ? " " + cls : "");
   }
 
-  function updateProgress() {
-    const total = state.questions.length;
-    const answered = answeredCount();
-    const pct = total ? Math.round((answered / total) * 100) : 0;
-    const bar = document.querySelector(".progress-bar > div");
-    if (bar) bar.style.width = pct + "%";
-    const text = document.getElementById("progressText");
-    if (text) text.textContent = `✅ Belgilangan: ${answered} / ${total}`;
-  }
-
-  async function submitAnswer(orderNum, answer) {
-    setHint(orderNum, "saqlanmoqda...");
+  async function save(order, answer) {
     try {
-      await apiPost("/api/answer", { attempt_id: state.attemptId, order_num: orderNum, answer });
-      state.answers[orderNum] = answer;
-      setHint(orderNum, "✅ saqlandi", "ok");
+      await apiPost("/api/answer", { attempt_id: exam.attemptId, order_num: order, answer });
+      exam.answers[order] = answer;
+      mark(order, "saved");
       updateProgress();
-    } catch (e) {
-      setHint(orderNum, "❌ " + e.message, "err");
-    }
+    } catch (e) { mark(order, "err"); toast(`${order}-savol: ${e.message}`); buzz("error"); }
   }
 
-  function wireQuestion(q) {
-    const card = document.querySelector(`.question[data-order="${q.order_num}"]`);
-    if (!card) return;
-
+  function wireRow(q) {
+    const row = document.querySelector(`.qrow[data-order="${q.order_num}"]`);
+    if (!row) return;
     if (q.qtype === "yopiq") {
-      card.querySelectorAll(".opt-btn").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          card.querySelectorAll(".opt-btn").forEach((b) => b.classList.remove("selected"));
-          btn.classList.add("selected");
-          submitAnswer(q.order_num, btn.dataset.letter);
-        });
-      });
-    } else {
-      const input = card.querySelector(".open-input");
-      let timer = null;
-      input.addEventListener("input", () => {
-        clearTimeout(timer);
-        setHint(q.order_num, "");
-        timer = setTimeout(() => {
-          const val = input.value.trim();
-          if (val) submitAnswer(q.order_num, val);
-        }, 700);
-      });
-      input.addEventListener("blur", () => {
-        clearTimeout(timer);
-        const val = input.value.trim();
-        if (val) submitAnswer(q.order_num, val);
-      });
+      row.querySelectorAll(".opt-btn").forEach((b) => b.addEventListener("click", () => {
+        row.querySelectorAll(".opt-btn").forEach((x) => x.classList.remove("selected"));
+        b.classList.add("selected");
+        if (tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+        save(q.order_num, b.dataset.l);
+      }));
+      return;
     }
+    const input = row.querySelector(".open-input");
+    let t = null;
+    input.addEventListener("focus", () => { kpTarget = input; if (kpOpen) setNativeKb(false); });
+    input.addEventListener("input", () => {
+      clearTimeout(t); mark(q.order_num, "");
+      t = setTimeout(() => { const v = input.value.trim(); if (v) save(q.order_num, v); }, 700);
+    });
+    input.addEventListener("blur", () => { clearTimeout(t); const v = input.value.trim(); if (v && v !== exam.answers[q.order_num]) save(q.order_num, v); });
+    row.querySelector(".kb-btn").addEventListener("click", () => (kpOpen && kpTarget === input ? closeKeypad() : openKeypad(input)));
   }
 
-  async function onFinish() {
-    const total = state.questions.length;
-    const unanswered = total - answeredCount();
-    const ok = window.confirm(
-      unanswered > 0
-        ? `⚠️ ${unanswered} savol belgilanmagan. Rostdanmi yakunlaymiz?`
-        : "Testni yakunlaysizmi?"
-    );
-    if (!ok) return;
+  function onFinish() {
+    const left = exam.questions.length - answered();
+    const msg = left > 0 ? `⚠️ ${left} savol belgilanmagan. Rostdan yakunlaymizmi?` : "Testni yakunlaysizmi?";
+    const go = async () => {
+      try {
+        const r = await apiPost("/api/finish", { attempt_id: exam.attemptId });
+        closeKeypad(); buzz("success");
+        if (r.mode === "arxiv") {
+          render(`<div class="hero"><div class="who">👤 ${esc(exam.user.full_name)}</div><h1>✅ Test yakunlandi!</h1></div>
+            <div class="stats"><div class="stat"><div class="num">${r.ball_75}</div><div class="label">Ball / 75</div></div>
+            <div class="stat"><div class="num">${esc(r.grade || "—")}</div><div class="label">Daraja</div></div>
+            <div class="stat"><div class="num">🏆</div><div class="label">Natija</div></div></div>
+            <div class="card"><pre style="white-space:pre-wrap;font-family:inherit;margin:0">${esc(r.breakdown)}</pre></div>${BRAND}`);
+        } else {
+          render(`<div class="hero"><div class="who">👤 ${esc(exam.user.full_name)}</div><h1>✅ Test yakunlandi!</h1></div>
+            <div class="card">⏳ Natijalar test admin tomonidan yakunlangach e'lon qilinadi. Botga umumiy natija xabari keladi.</div>${BRAND}`);
+        }
+      } catch (e) { toast(e.message); }
+    };
+    if (tg.showConfirm) tg.showConfirm(msg, (ok) => { if (ok) go(); });
+    else if (window.confirm(msg)) go();
+  }
 
+  /* ------------------------------ natijalar ------------------------------ */
+  async function showResultsList() {
+    render(`<div class="loading">Yuklanmoqda...</div>`);
     try {
-      const result = await apiPost("/api/finish", { attempt_id: state.attemptId });
-      if (result.mode === "arxiv") {
-        render(`
-          <div class="header"><h1>✅ Test yakunlandi!</h1></div>
-          <div class="question">
-            <div class="qnum">🏆 Ball: ${result.ball_75} / 75</div>
-            <div class="qnum">🎖 Daraja: ${result.grade || "chegaradan past"}</div>
-            <pre style="white-space:pre-wrap;font-family:inherit;">${escapeHtml(result.breakdown)}</pre>
-          </div>
-        `);
-      } else {
-        render(`
-          <div class="header"><h1>✅ Test yakunlandi!</h1></div>
-          <div class="question">⏳ Natijalar test admin tomonidan yakunlangach e'lon qilinadi.</div>
-        `);
-      }
-      if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
-    } catch (e) {
-      showError(e.message);
-    }
+      const d = await apiGet("/api/results");
+      if (!d.tests.length) { render(`<div class="hero"><h1>📊 Natijalar</h1></div><div class="empty">Hozircha e'lon qilingan natijalar yo'q.</div>${BRAND}`); return; }
+      const cards = d.tests.map((t) => `
+        <div class="card click" data-id="${t.id}"><div class="title">${esc(t.title)}</div>
+          <div class="meta"><span>👥 ${t.participants} kishi</span><span class="pill">${t.mode === "jonli" ? "🔴 Jonli" : "📚 Arxiv"}</span></div>
+          <button class="btn ghost">Natijalarni ko'rish →</button></div>`).join("");
+      render(`<div class="hero"><div class="who">Test natijalari</div><h1>📊 Natijalar</h1></div>${cards}${BRAND}`);
+      app.querySelectorAll(".card.click").forEach((c) => c.addEventListener("click", () => showResultDetail(c.dataset.id)));
+    } catch (e) { showError(e.message); }
   }
 
-  boot().catch((e) => showError(e.message));
+  async function showResultDetail(id) {
+    render(`<div class="loading">Yuklanmoqda...</div>`);
+    try {
+      const d = await apiGet(`/api/results/${id}`);
+      const medal = (r) => (r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : r ?? "-");
+      const rows = (list) => list.map((r) => `<div class="lb-row${r.is_me ? " me" : ""}"><div class="lb-rank">${medal(r.rank)}</div>
+        <div class="lb-name">${esc(r.full_name)}${r.is_me ? " (siz)" : ""}</div><div class="lb-grade">${esc(r.grade || "—")}</div><div class="lb-ball">${r.ball_75 ?? "-"}</div></div>`).join("");
+      const grades = Object.entries(d.grade_counts).map(([g, c]) => `<div class="stat"><div class="num">${c}</div><div class="label">${esc(g)}</div></div>`).join("");
+      render(`<button class="back-btn" id="bk">⬅️ Orqaga</button>
+        <div class="hero"><div class="who">Test natijalari</div><h1>${esc(d.test.title)}</h1><div class="progress-text">👥 Ishtirokchilar: ${d.participants}</div></div>
+        <div class="section-title">Daraja bo'yicha</div><div class="stats">${grades}</div>
+        <input class="search-input" id="q" placeholder="🔍 Ism bo'yicha qidirish" />
+        <div class="sheet" id="lb">${rows(d.results)}</div>${BRAND}`);
+      document.getElementById("bk").addEventListener("click", showResultsList);
+      document.getElementById("q").addEventListener("input", (e) => {
+        const q = e.target.value.trim().toLowerCase();
+        document.getElementById("lb").innerHTML = rows(d.results.filter((r) => r.full_name.toLowerCase().includes(q)));
+      });
+    } catch (e) { showError(e.message); }
+  }
+
+  /* ------------------------------ profil ------------------------------ */
+  async function showProfile() {
+    render(`<div class="loading">Yuklanmoqda...</div>`);
+    try {
+      const d = await apiGet("/api/me");
+      const best = d.results.reduce((m, r) => Math.max(m, r.ball_75 || 0), 0);
+      const list = d.results.map((r) => `<div class="lb-row"><div class="lb-rank">${r.rank ?? "-"}</div>
+        <div class="lb-name">${esc(r.title)}<div class="meta">${esc(r.date)}</div></div><div class="lb-grade">${esc(r.grade || "—")}</div><div class="lb-ball">${r.ball_75}</div></div>`).join("");
+      const last = d.results.slice(-8);
+      const bars = last.length ? `<div class="section-title">O'sish dinamikasi</div><div class="card"><div class="bars">${last.map((r) =>
+        `<div class="bar" style="height:${Math.max(4, Math.round((r.ball_75 / 75) * 100))}%"><span>${r.ball_75}</span></div>`).join("")}</div></div>` : "";
+      render(`<div class="hero"><div class="prof-head"><div class="avatar">${esc((d.user.full_name || "?").charAt(0).toUpperCase())}</div>
+        <div><h1>${esc(d.user.full_name)}</h1><div class="sub">${d.user.username ? "@" + esc(d.user.username) : ""}${d.user.public_id ? " · 🎫 ID " + d.user.public_id : ""}</div></div></div></div>
+        <div class="stats"><div class="stat"><div class="num">${d.results.length}</div><div class="label">Testlar</div></div>
+        <div class="stat"><div class="num">${best || "-"}</div><div class="label">Eng yaxshi ball</div></div>
+        <div class="stat"><div class="num">${d.results.length ? (d.results.reduce((s, r) => s + r.ball_75, 0) / d.results.length).toFixed(1) : "-"}</div><div class="label">O'rtacha</div></div></div>
+        ${bars}
+        <div class="section-title">Mening natijalarim</div>
+        <div class="sheet">${list || `<div class="empty">Hali natijalar yo'q.</div>`}</div>${BRAND}`);
+    } catch (e) { showError(e.message); }
+  }
+
+  /* ------------------------------ boshlash ------------------------------ */
+  const testId = new URLSearchParams(window.location.search).get("test_id");
+  if (testId) startExam(testId); else setTab("home");
 })();

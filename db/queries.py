@@ -404,6 +404,16 @@ async def list_attempts_with_users_for_export(session: AsyncSession, test_id: in
     return [(row[0], row[1]) for row in result.all()]
 
 
+async def list_user_purchased_tests(session: AsyncSession, user_pk: int) -> list[Test]:
+    result = await session.execute(
+        select(Test)
+        .join(Purchase, Purchase.test_id == Test.test_id)
+        .where(Purchase.user_pk == user_pk)
+        .order_by(Test.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
 async def list_purchasers(session: AsyncSession, test_id: int) -> list[User]:
     result = await session.execute(
         select(User).join(Purchase, Purchase.user_pk == User.user_pk).where(Purchase.test_id == test_id)

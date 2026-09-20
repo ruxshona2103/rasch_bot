@@ -32,6 +32,8 @@ from db.queries import (
     has_purchase,
     list_all_tests,
     list_attempts_with_users_for_export,
+    list_user_attempts,
+    list_user_purchased_tests,
     upsert_answer,
 )
 
@@ -110,6 +112,7 @@ async def get_test_schema(request: web.Request) -> web.Response:
                     {
                         "ok": True,
                         "test": {"id": test.test_id, "title": test.title, "mode": test.mode},
+                        "user": {"full_name": user.full_name},
                         "finished": True,
                     }
                 )
@@ -143,6 +146,7 @@ async def get_test_schema(request: web.Request) -> web.Response:
                     for q in questions
                     if not q.is_excluded
                 ],
+                "user": {"full_name": user.full_name},
                 "attempt": attempt_payload,
                 "answers": answers_map,
             }
@@ -262,6 +266,140 @@ async def finish(request: web.Request) -> web.Response:
         return web.json_response({"ok": True, "mode": "jonli"})
     except (KeyError, ValueError, TypeError, json.JSONDecodeError):
         return _json_error("Noto'g'ri so'rov.")
+    finally:
+        await session.close()
+
+
+# ---------------- O'quvchi: bosh sahifa / natijalar / profil ----------------
+
+
+@routes.get("/api/my-tests")
+async def my_tests(request: web.Request) -> web.Response:
+    auth = await _authenticate(request)
+    if auth is None:
+        return _json_error("Ro'yxatdan o'tmagansiz yoki sessiya eskirgan.", 401)
+    session, user = auth
+    try:
+        attempts = {a.test_id: a for a in await list_user_attempts(session, user.user_pk)}
+        payload = []
+        for t in await list_user_purchased_tests(session, user.user_pk):
+            if t.status == "bekor_qilingan":
+                continue
+            attempt = attempts.get(t.test_id)
+            finished = attempt is not None and attempt.status != "davom_etmoqda"
+            can_enter = not finished and (t.mode == "arxiv" or t.status == "jonli_davom")
+            payload.append(
+                {
+                    "id": t.test_id,
+                    "title": t.title,
+                    "mode": t.mode,
+                    "status": t.status,
+                    "finished": finished,
+                    "can_enter": can_enter,
+                    "ball_75": attempt.ball_75 if attempt else None,
+                    "grade": attempt.grade if attempt else None,
+                }
+            )
+        return web.json_response({"ok": True, "tests": payload})
+    finally:
+        await session.close()
+
+
+@routes.get("/api/me")
+async def me(request: web.Request) -> web.Response:
+    auth = await _authenticate(request)
+    if auth is None:
+        return _json_error("Ro'yxatdan o'tmagansiz yoki sessiya eskirgan.", 401)
+    session, user = auth
+    try:
+        results = []
+        for a in await list_user_attempts(session, user.user_pk):
+            if a.ball_75 is None:
+                continue
+            test = await get_test(session, a.test_id)
+            results.append(
+                {
+                    "test_id": a.test_id,
+                    "title": test.title if test else "-",
+                    "ball_75": a.ball_75,
+                    "grade": a.grade,
+                    "rank": a.rank_position,
+                    "date": a.started_at.strftime("%d.%m.%Y") if a.started_at else "",
+                }
+            )
+        return web.json_response(
+            {
+                "ok": True,
+                "user": {
+                    "full_name": user.full_name,
+                    "username": user.username,
+                    "public_id": user.public_id,
+                },
+                "results": results,
+            }
+        )
+    finally:
+        await session.close()
+
+
+@routes.get("/api/results")
+async def results_list(request: web.Request) -> web.Response:
+    auth = await _authenticate(request)
+    if auth is None:
+        return _json_error("Ro'yxatdan o'tmagansiz yoki sessiya eskirgan.", 401)
+    session, _user = auth
+    try:
+        payload = []
+        for t in await list_all_tests(session):
+            if t.status in ("bekor_qilingan", "tayyorlanmoqda", "rejalashtirilgan", "jonli_davom"):
+                continue
+            rows = await list_attempts_with_users_for_export(session, t.test_id)
+            scored = [r for r in rows if r[0].ball_75 is not None]
+            if not scored:
+                continue
+            payload.append({"id": t.test_id, "title": t.title, "mode": t.mode, "participants": len(scored)})
+        return web.json_response({"ok": True, "tests": payload})
+    finally:
+        await session.close()
+
+
+@routes.get("/api/results/{test_id}")
+async def results_detail(request: web.Request) -> web.Response:
+    auth = await _authenticate(request)
+    if auth is None:
+        return _json_error("Ro'yxatdan o'tmagansiz yoki sessiya eskirgan.", 401)
+    session, user = auth
+    try:
+        test_id = int(request.match_info["test_id"])
+        test = await get_test(session, test_id)
+        if test is None or test.status in ("bekor_qilingan", "tayyorlanmoqda", "rejalashtirilgan", "jonli_davom"):
+            return _json_error("Natijalar hali mavjud emas.", 404)
+
+        rows = await list_attempts_with_users_for_export(session, test_id)
+        results = [
+            {
+                "rank": a.rank_position,
+                "full_name": u.full_name,
+                "grade": a.grade,
+                "ball_75": a.ball_75,
+                "is_me": u.user_pk == user.user_pk,
+            }
+            for a, u in rows
+            if a.ball_75 is not None
+        ]
+        grade_counts: dict[str, int] = {}
+        for r in results:
+            key = r["grade"] or "chegaradan past"
+            grade_counts[key] = grade_counts.get(key, 0) + 1
+        return web.json_response(
+            {
+                "ok": True,
+                "test": {"id": test.test_id, "title": test.title},
+                "participants": len(results),
+                "grade_counts": grade_counts,
+                "results": results,
+            }
+        )
     finally:
         await session.close()
 

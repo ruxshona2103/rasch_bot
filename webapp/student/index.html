@@ -3,14 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Imtihon testi</title>
+  <title>Abdurashid Teacher</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=2" />
 </head>
 <body>
-  <div id="app">
-    <div class="loading" id="loading">Yuklanmoqda...</div>
-  </div>
-  <script src="app.js"></script>
+  <div id="toast" hidden></div>
+  <main id="app"><div class="loading">Yuklanmoqda...</div></main>
+  <div id="keypad" hidden></div>
+  <nav id="tabbar">
+    <button data-tab="home" class="active"><span class="ic">🏠</span><span>Bosh sahifa</span></button>
+    <button data-tab="results"><span class="ic">📊</span><span>Natijalar</span></button>
+    <button data-tab="profile"><span class="ic">👤</span><span>Profil</span></button>
+  </nav>
+  <script src="app.js?v=2"></script>
 </body>
 </html>
