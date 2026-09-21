@@ -13,7 +13,7 @@ Qo'lda kiritish: har savol birma-bir so'raladi (turi -> kontent -> to'g'ri javob
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -294,6 +294,35 @@ def _part_label(data: dict, order_num: int) -> str:
     return str(order_num)
 
 
+def _open_answer_keyboard(data: dict) -> InlineKeyboardMarkup:
+    rows = []
+    if not data.get("ab_done"):
+        rows.append([InlineKeyboardButton(
+            text=f"🔤 a) / b) qismlarga o'tish ({data['open_count'] * 2} ta)", callback_data="pdfab:double"
+        )])
+    rows.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="flow:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _double_open(message: Message, state: FSMContext) -> None:
+    """Ochiq maydonlar sonini 2 barobar qiladi (mavjud javoblar saqlanadi: ular 36a, 36b ... bo'lib qoladi)."""
+    data = await state.get_data()
+    if data.get("ab_done"):
+        return
+    await state.update_data(open_count=data["open_count"] * 2, ab_done=True)
+    await message.answer(
+        f"✅ Ochiq maydonlar {data['open_count'] * 2} taga o'zgardi (a/b qismlar). Kiritilgan javoblar saqlanib qoldi."
+    )
+    await _ask_pdf_answer(message, state)
+
+
+@router.callback_query(TestCreate.waiting_pdf_answer, F.data == "pdfab:double")
+async def pdf_double_open(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await _double_open(callback.message, state)
+    await callback.answer()
+
+
 async def _ask_pdf_answer(message: Message, state: FSMContext) -> None:
     """Navbatdagi savol uchun faqat to'g'ri javobni so'raydi (matn/rasm
     qayta kiritilmaydi — hammasi PDF faylning o'zida bor). 1..closed_count
@@ -312,7 +341,7 @@ async def _ask_pdf_answer(message: Message, state: FSMContext) -> None:
     else:
         await message.answer(
             f"{_part_label(data, order_num)} javobi ({order_num}/{total}) — to'g'ri javobni yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
-            reply_markup=cancel_inline_keyboard(),
+            reply_markup=_open_answer_keyboard(data),
         )
     await state.set_state(TestCreate.waiting_pdf_answer)
 
@@ -337,10 +366,13 @@ async def pdf_process_answer_open(
         return
 
     raw = message.text.strip()
+    if raw.lower() in ("ab", "a/b", "a b"):
+        await _double_open(message, state)
+        return
     if not is_valid_numeric_answer(raw):
         await message.answer(
             "❗️ Matematik ifoda sifatida yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
-            reply_markup=cancel_inline_keyboard(),
+            reply_markup=_open_answer_keyboard(data),
         )
         return
 
