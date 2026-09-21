@@ -132,13 +132,14 @@ def format_leaderboard(test_title: str, results: list[AttemptResult], names: dic
     return chunks
 
 
-def format_breakdown(correct_orders: list[int], wrong_orders: list[int]) -> str:
-    """🆕 Natija xabariga qo'shiladigan savollar tahlili matni."""
-    correct_orders = sorted(correct_orders)
-    wrong_orders = sorted(wrong_orders)
+def format_breakdown(correct_orders: list[int], wrong_orders: list[int], labels: dict[int, str] | None = None) -> str:
+    """🆕 Natija xabariga qo'shiladigan savollar tahlili matni. labels -- a/b
+    qismli savollar uchun ko'rsatiladigan belgilar (order_num -> '36a')."""
+    labels = labels or {}
+    show = lambda orders: ", ".join(labels.get(o, str(o)) for o in sorted(orders)) or "—"
     lines = ["📋 Savollar tahlili:"]
-    lines.append(f"✅ To'g'ri ({len(correct_orders)} ta): {', '.join(map(str, correct_orders)) or '—'}")
-    lines.append(f"❌ Xato/belgilanmagan ({len(wrong_orders)} ta): {', '.join(map(str, wrong_orders)) or '—'}")
+    lines.append(f"✅ To'g'ri ({len(correct_orders)} ta): {show(correct_orders)}")
+    lines.append(f"❌ Xato/belgilanmagan ({len(wrong_orders)} ta): {show(wrong_orders)}")
     return "\n".join(lines)
 
 

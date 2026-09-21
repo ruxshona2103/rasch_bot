@@ -15,7 +15,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from bot.config import settings
 from db.engine import async_session
-from db.queries import get_test, list_purchasers, list_tests_by_mode, mark_test_status
+from db.queries import get_question_labels, get_test, list_purchasers, list_tests_by_mode, mark_test_status
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +104,7 @@ async def run_rasch(bot: Bot, test_id: int) -> None:
         total = len(results)
         lookup = {r.user_pk: r for r in results}
         purchasers = await list_purchasers(session, test_id)
+        labels = await get_question_labels(session, test_id)
 
         for user in purchasers:
             result = lookup.get(user.user_pk)
@@ -115,7 +116,7 @@ async def run_rasch(bot: Bot, test_id: int) -> None:
                 f"🏆 \"{test.title}\" NATIJANGIZ\n"
                 f"📊 Ball: {result.ball_75} / 75 | 🎖 Daraja: {result.grade or 'chegaradan past'}\n"
                 f"🥇 Reyting: {total} tadan {result.rank_position}-o'rin\n\n"
-                f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
+                f"{format_breakdown(result.correct_orders, result.wrong_orders, labels)}",
                 reply_markup=appeal_button_keyboard(result.attempt_id),
             )
             # 🆕 Natija sertifikati (PDF) -- kurs oxirida har bir ishtirokchiga

@@ -26,6 +26,7 @@ from db.queries import (
     count_questions,
     delete_test_completely,
     finish_test_manually,
+    get_question_labels,
     get_test,
     list_all_tests,
     list_attempts_with_users_for_export,
@@ -172,6 +173,7 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
     total = len(results)
     lookup = {r.user_pk: r for r in results}
     purchasers = await list_purchasers(session, test_id)
+    labels = await get_question_labels(session, test_id)
 
     for user in purchasers:
         result = lookup.get(user.user_pk)
@@ -183,7 +185,7 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
                 f"🏆 \"{test.title}\" NATIJANGIZ\n"
                 f"📊 Ball: {result.ball_75} / 75 | 🎖 Daraja: {result.grade or 'chegaradan past'}\n"
                 f"🥇 Reyting: {total} tadan {result.rank_position}-o'rin\n\n"
-                f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
+                f"{format_breakdown(result.correct_orders, result.wrong_orders, labels)}",
                 reply_markup=appeal_button_keyboard(result.attempt_id),
             )
         except Exception:

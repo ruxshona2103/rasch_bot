@@ -32,6 +32,7 @@ from db.queries import (
     finish_attempt,
     get_answers_map,
     get_attempt,
+    get_question_labels,
     get_questions_for_test,
     get_test,
     get_user_by_telegram_id,
@@ -152,6 +153,7 @@ async def get_test_schema(request: web.Request) -> web.Response:
                         "order_num": q.order_num,
                         "qtype": q.qtype,
                         "option_count": q.option_count,
+                        "label": q.label,
                     }
                     for q in questions
                     if not q.is_excluded
@@ -307,7 +309,9 @@ async def finish(request: web.Request) -> web.Response:
                     "attempt_id": attempt_id,
                     "ball_75": ball,
                     "grade": grade,
-                    "breakdown": format_breakdown(correct_orders, wrong_orders),
+                    "breakdown": format_breakdown(
+                        correct_orders, wrong_orders, await get_question_labels(session, attempt.test_id)
+                    ),
                 }
             )
 

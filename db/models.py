@@ -82,6 +82,8 @@ class Question(Base):
     correct_answer: Mapped[str] = mapped_column(Text, nullable=False)
     # 🆕 'algebra' | 'geometriya' | None -- sertifikatdagi bo'limlar bo'yicha ball uchun
     topic: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    # 🆕 Ko'rsatiladigan raqam/belgi: masalan '36a', '36b' (bir savolning ikki qismi); None -- oddiy order_num
+    label: Mapped[str | None] = mapped_column(String(8), nullable=True)
     b_difficulty: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_excluded: Mapped[bool] = mapped_column(Boolean, default=False)
 

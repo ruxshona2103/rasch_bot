@@ -17,6 +17,7 @@ from db.queries import (
     exclude_question,
     get_appeal,
     get_question_by_order,
+    get_question_labels,
     get_test,
     get_user_by_pk,
     list_pending_appeals,
@@ -48,6 +49,7 @@ async def list_appeals(message: Message, session: AsyncSession) -> None:
 
 
 async def _notify_rescored(bot, session: AsyncSession, test, jonli_results, arxiv_results, reason: str) -> None:
+    labels = await get_question_labels(session, test.test_id)
     for result in jonli_results:
         user = await get_user_by_pk(session, result.user_pk)
         try:
@@ -55,7 +57,7 @@ async def _notify_rescored(bot, session: AsyncSession, test, jonli_results, arxi
                 user.telegram_id,
                 f"⚠️ \"{test.title}\" testida {reason}.\n"
                 f"Yangi ballingiz: {result.ball_75} / 75 | 🎖 {result.grade or 'chegaradan past'}\n\n"
-                f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
+                f"{format_breakdown(result.correct_orders, result.wrong_orders, labels)}",
             )
         except Exception:
             continue

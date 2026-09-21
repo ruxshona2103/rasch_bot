@@ -24,6 +24,7 @@ from db.queries import (
     delete_question_and_renumber,
     get_questions_for_test,
     get_test,
+    set_part_labels,
     set_question_topics,
     update_question,
 )
@@ -50,6 +51,53 @@ async def back_to_test(callback: CallbackQuery, session: AsyncSession) -> None:
     test = await get_test(session, test_id)
     await callback.message.answer("👨‍💼 Testlar boshqaruviga qaytdingiz.", reply_markup=test_actions_keyboard(test))
     await callback.answer()
+
+
+# ================= a) / b) qismlar (36a, 36b ...) =================
+
+
+@router.callback_query(F.data.startswith("qedit:parts:"))
+async def ask_parts(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    test_id = int(callback.data.split(":")[2])
+    total = await count_questions(session, test_id)
+    await state.update_data(parts_test_id=test_id, parts_total=total)
+    await callback.message.answer(
+        f"🔤 Jami {total} ta javob maydoni. Qaysi TARTIB RAQAMIDAN boshlab har savolda ikkita "
+        "qism (a va b) bor? Masalan 36 desangiz: 36-maydon = 36a, 37-maydon = 36b, "
+        "38-maydon = 37a, 39-maydon = 37b ... shunday davom etadi.\n"
+        "Belgilarni o'chirish uchun 0 yozing.",
+        reply_markup=cancel_inline_keyboard(),
+    )
+    await state.set_state(QuestionEdit.waiting_parts)
+    await callback.answer()
+
+
+@router.message(QuestionEdit.waiting_parts, F.text.regexp(r"^\d+$"))
+async def save_parts(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    data = await state.get_data()
+    test_id, total = data["parts_test_id"], data["parts_total"]
+    start = int(message.text)
+    if start == 0:
+        await set_part_labels(session, test_id, None)
+        result = "✅ a/b belgilari o'chirildi."
+    elif 1 <= start <= total:
+        count = await set_part_labels(session, test_id, start)
+        last_base = start + (count - 1) // 2
+        result = (
+            f"✅ Saqlandi: {start}-maydondan boshlab {count} ta maydon "
+            f"{start}a, {start}b ... {last_base}{'a' if count % 2 else 'b'} deb belgilandi. "
+            "Mini App va natija xabarlarida shunday ko'rinadi."
+        )
+    else:
+        await message.answer(f"❗️ 1 dan {total} gacha raqam kiriting (yoki 0):", reply_markup=cancel_inline_keyboard())
+        return
+    await state.clear()
+    await message.answer(result, reply_markup=edit_menu_keyboard(test_id))
+
+
+@router.message(QuestionEdit.waiting_parts)
+async def save_parts_invalid(message: Message) -> None:
+    await message.answer("❗️ Faqat raqam kiriting (masalan: 36):", reply_markup=cancel_inline_keyboard())
 
 
 # ================= Bo'limlar (algebra / geometriya) =================

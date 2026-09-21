@@ -60,7 +60,7 @@ main { max-width: 720px; margin: 0 auto; }
 }
 .qrow { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); }
 .qrow:last-child { border-bottom: none; }
-.qn { width: 34px; flex: none; font-weight: 700; color: var(--muted); font-size: 13px; }
+.qn { width: 42px; flex: none; font-weight: 700; color: var(--muted); font-size: 13px; }
 .qn.saved { color: var(--ok); }
 .qn.err { color: var(--err); }
 .qn.pend { color: #d97706; }

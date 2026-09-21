@@ -161,6 +161,8 @@ async def delete_question_and_renumber(session: AsyncSession, test_id: int, orde
     await session.execute(delete(AiVerdict).where(AiVerdict.question_id == question.question_id))
     await session.execute(delete(Answer).where(Answer.question_id == question.question_id))
     await session.execute(delete(Question).where(Question.question_id == question.question_id))
+    # Qayta raqamlangach a/b belgilari mos kelmay qoladi -- admin qayta belgilaydi
+    await session.execute(update(Question).where(Question.test_id == test_id).values(label=None))
 
     remaining_result = await session.execute(
         select(Question)
@@ -872,3 +874,29 @@ async def count_scored_attempts(session: AsyncSession, test_id: int, kind: str) 
         )
     )
     return result.scalar_one()
+
+
+async def set_part_labels(session: AsyncSession, test_id: int, start_order: int | None) -> int:
+    """start_order dan boshlab savollar juft-juft a/b qism bo'ladi: start_order
+    savoli '<start>a', keyingisi '<start>b', undan keyingisi '<start+1>a' ...
+    None -- belgilarni o'chiradi. Qaytaradi: belgilangan savollar soni."""
+    if start_order is None:
+        await session.execute(update(Question).where(Question.test_id == test_id).values(label=None))
+        await session.commit()
+        return 0
+    await session.execute(update(Question).where(Question.test_id == test_id).values(label=None))
+    result = await session.execute(
+        select(Question).where(Question.test_id == test_id, Question.order_num >= start_order).order_by(Question.order_num)
+    )
+    questions = list(result.scalars().all())
+    for i, question in enumerate(questions):
+        question.label = f"{start_order + i // 2}{'a' if i % 2 == 0 else 'b'}"
+    await session.commit()
+    return len(questions)
+
+
+async def get_question_labels(session: AsyncSession, test_id: int) -> dict[int, str]:
+    result = await session.execute(
+        select(Question.order_num, Question.label).where(Question.test_id == test_id, Question.label.isnot(None))
+    )
+    return {order: label for order, label in result.all()}

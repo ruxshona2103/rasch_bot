@@ -251,6 +251,7 @@
   }
 
   const answered = () => Object.keys(exam.answers).length;
+  const labelOf = (order) => { const q = exam.questions.find((x) => x.order_num === order); return (q && q.label) || order; };
 
   // Ilova ochiq ekanini serverga bildirib turamiz; 5 daqiqa signal bo'lmasa server
   // qoralama javoblarni o'chiradi (yopib ketilgan/aloqa uzilgan holat).
@@ -308,10 +309,10 @@
     const saved = cur ? " saved" : "";
     if (q.qtype === "yopiq") {
       const letters = Array.from({ length: q.option_count }, (_, i) => String.fromCharCode(65 + i));
-      return `<div class="qrow" data-order="${q.order_num}"><div class="qn${saved}" id="qn-${q.order_num}">${q.order_num}.</div>
+      return `<div class="qrow" data-order="${q.order_num}"><div class="qn${saved}" id="qn-${q.order_num}">${esc(q.label || q.order_num)}.</div>
         <div class="opts">${letters.map((l) => `<button type="button" class="opt-btn${cur === l ? " selected" : ""}" data-l="${l}">${l}</button>`).join("")}</div></div>`;
     }
-    return `<div class="qrow open" data-order="${q.order_num}"><div class="qn${saved}" id="qn-${q.order_num}">${q.order_num}.</div>
+    return `<div class="qrow open" data-order="${q.order_num}"><div class="qn${saved}" id="qn-${q.order_num}">${esc(q.label || q.order_num)}.</div>
       <div class="open-col"><div class="open-wrap"><input class="open-input" type="text" autocomplete="off" autocapitalize="off" placeholder="Javob..." value="${esc(cur || "")}" />
       <button type="button" class="kb-btn" title="Matematik klaviatura">⌨️</button></div>
       <div class="preview" id="pv-${q.order_num}">${cur && window.mathToHtml ? window.mathToHtml(cur) : ""}</div>
@@ -351,7 +352,7 @@
       if (silent) { mark(order, "pend"); return; }
       mark(order, "err");
       buzz("error");
-      if (!setHint(order, "❌ " + e.message, "err")) toast(`${order}-savol: ${e.message}`);
+      if (!setHint(order, "❌ " + e.message, "err")) toast(`${labelOf(order)}-savol: ${e.message}`);
     }
   }
 
