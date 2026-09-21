@@ -158,6 +158,7 @@ async def delete_question_and_renumber(session: AsyncSession, test_id: int, orde
     if question is None:
         return False
 
+    await session.execute(delete(AiVerdict).where(AiVerdict.question_id == question.question_id))
     await session.execute(delete(Answer).where(Answer.question_id == question.question_id))
     await session.execute(delete(Question).where(Question.question_id == question.question_id))
 
@@ -841,3 +842,33 @@ async def clear_all_stale_drafts(session: AsyncSession) -> int:
         if await clear_stale_draft(session, attempt_id):
             count += 1
     return count
+
+
+# ---------------- Bo'limlar va sertifikat ----------------
+
+
+async def set_question_topics(session: AsyncSession, test_id: int, geometry_orders: set[int] | None) -> None:
+    """geometry_orders=None -- bo'limlarni o'chiradi; aks holda ko'rsatilgan
+    raqamlar 'geometriya', qolganlari 'algebra' bo'ladi."""
+    if geometry_orders is None:
+        await session.execute(update(Question).where(Question.test_id == test_id).values(topic=None))
+    else:
+        await session.execute(
+            update(Question).where(Question.test_id == test_id).values(topic="algebra")
+        )
+        if geometry_orders:
+            await session.execute(
+                update(Question)
+                .where(Question.test_id == test_id, Question.order_num.in_(geometry_orders))
+                .values(topic="geometriya")
+            )
+    await session.commit()
+
+
+async def count_scored_attempts(session: AsyncSession, test_id: int, kind: str) -> int:
+    result = await session.execute(
+        select(func.count()).select_from(Attempt).where(
+            Attempt.test_id == test_id, Attempt.kind == kind, Attempt.ball_75.isnot(None)
+        )
+    )
+    return result.scalar_one()

@@ -9,6 +9,8 @@ class QuestionEdit(StatesGroup):
 
     waiting_delete_number = State()
 
+    waiting_topics = State()
+
     waiting_edit_number = State()
     waiting_edit_qtype = State()
     waiting_edit_content = State()

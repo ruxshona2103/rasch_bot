@@ -6,6 +6,7 @@ qayta ishga tushganda `recover_all_jobs()` orqali bazadagi `tests.status`dan
 kelib chiqib qayta tiklanadi — allaqachon o'tgan bosqichlar qayta bajarilmaydi.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 
@@ -90,6 +91,7 @@ async def close_test(bot: Bot, test_id: int) -> None:
 
 async def run_rasch(bot: Bot, test_id: int) -> None:
     from bot.keyboards.appeal import appeal_button_keyboard
+    from core.certificate_service import send_certificate
     from core.rasch import finalize_jonli_test, format_breakdown, format_leaderboard
 
     async with async_session() as session:
@@ -116,6 +118,9 @@ async def run_rasch(bot: Bot, test_id: int) -> None:
                 f"{format_breakdown(result.correct_orders, result.wrong_orders)}",
                 reply_markup=appeal_button_keyboard(result.attempt_id),
             )
+            # 🆕 Natija sertifikati (PDF) -- kurs oxirida har bir ishtirokchiga
+            await send_certificate(bot, user.telegram_id, result.attempt_id)
+            await asyncio.sleep(0.05)
 
         # 🆕 Shaxsiy natijadan tashqari UMUMIY natija (nechta odam qatnashdi,
         # HAMMASI eng yuqoridan pastga tartiblangan) ham barcha ishtirokchilarga

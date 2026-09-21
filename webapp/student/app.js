@@ -17,8 +17,10 @@
   function render(html) { app.innerHTML = html; window.scrollTo(0, 0); }
   function showError(m) { render(`<div class="error">⚠️ ${esc(m)}</div>`); }
   let toastTimer = null;
-  function toast(m) {
+  function toastOk(m) { toast(m, true); }
+  function toast(m, ok) {
     toastEl.textContent = m; toastEl.hidden = false;
+    toastEl.style.background = ok ? "var(--ok)" : "";
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { toastEl.hidden = true; }, 3000);
   }
@@ -416,7 +418,9 @@
             <div class="stats"><div class="stat"><div class="num">${r.ball_75}</div><div class="label">Ball / 75</div></div>
             <div class="stat"><div class="num">${esc(r.grade || "—")}</div><div class="label">Daraja</div></div>
             <div class="stat"><div class="num">🏆</div><div class="label">Natija</div></div></div>
-            <div class="card"><pre style="white-space:pre-wrap;font-family:inherit;margin:0">${esc(r.breakdown)}</pre></div>${BRAND}`);
+            <div class="card"><pre style="white-space:pre-wrap;font-family:inherit;margin:0">${esc(r.breakdown)}</pre></div>
+            <button class="btn" id="certBtn">📄 Sertifikatni (PDF) botga yuborish</button>${BRAND}`);
+          document.getElementById("certBtn").addEventListener("click", (e) => sendCertificate(r.attempt_id, e.target));
         } else {
           render(`<div class="hero"><div class="who">👤 ${esc(exam.user.full_name)}</div><h1>✅ Test yakunlandi!</h1></div>
             <div class="card">⏳ Natijalar test admin tomonidan yakunlangach e'lon qilinadi. Botga umumiy natija xabari keladi.</div>${BRAND}`);
@@ -470,7 +474,8 @@
       const d = await apiGet("/api/me");
       const best = d.results.reduce((m, r) => Math.max(m, r.ball_75 || 0), 0);
       const list = d.results.map((r) => `<div class="lb-row"><div class="lb-rank">${r.rank ?? "-"}</div>
-        <div class="lb-name">${esc(r.title)}<div class="meta">${esc(r.date)}</div></div><div class="lb-grade">${esc(r.grade || "—")}</div><div class="lb-ball">${r.ball_75}</div></div>`).join("");
+        <div class="lb-name">${esc(r.title)}<div class="meta">${esc(r.date)}</div></div><div class="lb-grade">${esc(r.grade || "—")}</div><div class="lb-ball">${r.ball_75}</div>
+        <button class="cert-btn" data-cert="${r.attempt_id}" title="Sertifikat (PDF)">📄</button></div>`).join("");
       const last = d.results.slice(-8);
       const bars = last.length ? `<div class="section-title">O'sish dinamikasi</div><div class="card"><div class="bars">${last.map((r) =>
         `<div class="bar" style="height:${Math.max(4, Math.round((r.ball_75 / 75) * 100))}%"><span>${r.ball_75}</span></div>`).join("")}</div></div>` : "";
@@ -480,9 +485,20 @@
         <div class="stat"><div class="num">${best || "-"}</div><div class="label">Eng yaxshi ball</div></div>
         <div class="stat"><div class="num">${d.results.length ? (d.results.reduce((s, r) => s + r.ball_75, 0) / d.results.length).toFixed(1) : "-"}</div><div class="label">O'rtacha</div></div></div>
         ${bars}
-        <div class="section-title">Mening natijalarim</div>
+        <div class="section-title">Mening natijalarim (📄 — sertifikat PDF)</div>
         <div class="sheet">${list || `<div class="empty">Hali natijalar yo'q.</div>`}</div>${BRAND}`);
+      app.querySelectorAll("[data-cert]").forEach((b) => b.addEventListener("click", () => sendCertificate(b.dataset.cert, b)));
     } catch (e) { showError(e.message); }
+  }
+
+  async function sendCertificate(attemptId, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      await apiPost("/api/certificate", { attempt_id: Number(attemptId) });
+      buzz("success");
+      toastOk("📄 Sertifikat botga yuborildi");
+    } catch (e) { toast(e.message); }
+    finally { if (btn) setTimeout(() => { btn.disabled = false; }, 15000); }
   }
 
   /* ------------------------------ boshlash ------------------------------ */

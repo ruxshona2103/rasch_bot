@@ -80,6 +80,8 @@ class Question(Base):
     # Sertifikatning "moslashtirish" bo'limi, masalan 33-35).
     option_count: Mapped[int] = mapped_column(Integer, default=4)
     correct_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    # 🆕 'algebra' | 'geometriya' | None -- sertifikatdagi bo'limlar bo'yicha ball uchun
+    topic: Mapped[str | None] = mapped_column(String(12), nullable=True)
     b_difficulty: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_excluded: Mapped[bool] = mapped_column(Boolean, default=False)
 

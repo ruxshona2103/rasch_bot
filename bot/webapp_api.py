@@ -12,12 +12,14 @@ tekshiriladi -- shu orqali foydalanuvchi Telegram ID'si xavfsiz aniqlanadi
 import asyncio
 import json
 import logging
+import time
 
 from aiogram.types import BufferedInputFile
 from aiohttp import web
 
 from bot.config import settings
 from core.ai_check import answer_input_ok
+from core.certificate_service import send_certificate
 from core.answer_key import normalize_open_answer
 from core.export import build_results_excel
 from core.rasch import format_breakdown, score_archive_attempt
@@ -44,6 +46,7 @@ from db.queries import (
 
 logger = logging.getLogger(__name__)
 routes = web.RouteTableDef()
+_cert_last_request: dict[int, float] = {}
 
 
 async def _authenticate(request: web.Request):
@@ -292,10 +295,16 @@ async def finish(request: web.Request) -> web.Response:
 
         if test.mode == "arxiv":
             ball, grade, correct_orders, wrong_orders = await score_archive_attempt(session, attempt_id)
+            bot = request.app["bot"]
+            if bot is not None:
+                task = asyncio.create_task(send_certificate(bot, user.telegram_id, attempt_id))
+                request.app["tasks"].add(task)
+                task.add_done_callback(request.app["tasks"].discard)
             return web.json_response(
                 {
                     "ok": True,
                     "mode": "arxiv",
+                    "attempt_id": attempt_id,
                     "ball_75": ball,
                     "grade": grade,
                     "breakdown": format_breakdown(correct_orders, wrong_orders),
@@ -358,6 +367,7 @@ async def me(request: web.Request) -> web.Response:
             test = await get_test(session, a.test_id)
             results.append(
                 {
+                    "attempt_id": a.attempt_id,
                     "test_id": a.test_id,
                     "title": test.title if test else "-",
                     "ball_75": a.ball_75,
@@ -439,6 +449,40 @@ async def results_detail(request: web.Request) -> web.Response:
                 "results": results,
             }
         )
+    finally:
+        await session.close()
+
+
+@routes.post("/api/certificate")
+async def certificate(request: web.Request) -> web.Response:
+    """Natija sertifikatini (PDF) foydalanuvchining shaxsiy chatiga yuboradi."""
+    auth = await _authenticate(request)
+    if auth is None:
+        return _json_error("Ro'yxatdan o'tmagansiz yoki sessiya eskirgan.", 401)
+    session, user = auth
+    try:
+        body = await request.json()
+        attempt_id = int(body["attempt_id"])
+
+        from db.models import Attempt
+
+        attempt = await session.get(Attempt, attempt_id)
+        if attempt is None or attempt.user_pk != user.user_pk:
+            return _json_error("Urinish topilmadi.", 404)
+        if attempt.ball_75 is None:
+            return _json_error("Natija hali e'lon qilinmagan.", 409)
+
+        now = time.monotonic()
+        if now - _cert_last_request.get(user.user_pk, -999) < 20:
+            return _json_error("Iltimos, bir necha soniya kutib qayta urinib ko'ring.", 429)
+        _cert_last_request[user.user_pk] = now
+
+        bot = request.app["bot"]
+        if bot is None or not await send_certificate(bot, user.telegram_id, attempt_id):
+            return _json_error("Sertifikatni yuborib bo'lmadi. Botga /start yozib qayta urinib ko'ring.", 502)
+        return web.json_response({"ok": True})
+    except (KeyError, ValueError, TypeError, json.JSONDecodeError):
+        return _json_error("Noto'g'ri so'rov.")
     finally:
         await session.close()
 
@@ -549,6 +593,7 @@ async def admin_export_excel(request: web.Request) -> web.Response:
 def create_webapp_app(bot=None) -> web.Application:
     app = web.Application()
     app["bot"] = bot
+    app["tasks"] = set()
     app.add_routes(routes)
     return app
 

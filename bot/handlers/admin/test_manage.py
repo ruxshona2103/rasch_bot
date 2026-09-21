@@ -1,5 +1,6 @@
 """IV.3-bo'lim: testlar ro'yxati, vaqt belgilash/qo'lda boshlash/yakunlash, video qo'shish, bekor qilish."""
 
+import asyncio
 from datetime import datetime, timedelta
 
 from aiogram import F, Router
@@ -14,6 +15,7 @@ from bot.keyboards.appeal import appeal_button_keyboard
 from bot.keyboards.common import cancel_inline_keyboard
 from bot.keyboards.test_manage import cancel_confirm_keyboard, delete_confirm_keyboard, test_actions_keyboard
 from bot.states.payment import TestManage
+from core.certificate_service import send_certificate
 from core.export import build_results_excel
 from core.marketing import announce_schedule
 from core.rasch import finalize_jonli_test, format_breakdown, format_leaderboard
@@ -186,6 +188,9 @@ async def finish_test_now(callback: CallbackQuery, session: AsyncSession) -> Non
             )
         except Exception:
             continue
+        # 🆕 Natija sertifikati (PDF) -- kurs oxirida har bir ishtirokchiga
+        await send_certificate(callback.bot, user.telegram_id, result.attempt_id)
+        await asyncio.sleep(0.05)
 
     # 🆕 Har bir ishtirokchiga shaxsiy natijadan tashqari UMUMIY natija
     # (nechta odam qatnashdi, HAMMASI eng yuqoridan pastga tartiblangan) ham

@@ -16,6 +16,7 @@ from bot.keyboards.question_edit import edit_menu_keyboard
 from bot.keyboards.test_manage import test_actions_keyboard
 from bot.states.question_edit import QuestionEdit
 from core.answer_key import normalize_open_answer
+from core.topics import parse_order_ranges
 from core.telegram_media import document_to_photo_file_id, is_image_document
 from db.queries import (
     add_question,
@@ -23,6 +24,7 @@ from db.queries import (
     delete_question_and_renumber,
     get_questions_for_test,
     get_test,
+    set_question_topics,
     update_question,
 )
 
@@ -48,6 +50,50 @@ async def back_to_test(callback: CallbackQuery, session: AsyncSession) -> None:
     test = await get_test(session, test_id)
     await callback.message.answer("👨‍💼 Testlar boshqaruviga qaytdingiz.", reply_markup=test_actions_keyboard(test))
     await callback.answer()
+
+
+# ================= Bo'limlar (algebra / geometriya) =================
+
+
+@router.callback_query(F.data.startswith("qedit:topics:"))
+async def ask_topics(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    test_id = int(callback.data.split(":")[2])
+    total = await count_questions(session, test_id)
+    await state.update_data(topics_test_id=test_id, topics_total=total)
+    await callback.message.answer(
+        f"🧭 Jami {total} ta savol. GEOMETRIYA savollarining raqamlarini kiriting "
+        "(masalan: 25-30, 33-35, 41-45).\nQolgan barcha savollar ALGEBRA deb belgilanadi.\n"
+        "Bo'limlarni butunlay o'chirish uchun 0 yozing.",
+        reply_markup=cancel_inline_keyboard(),
+    )
+    await state.set_state(QuestionEdit.waiting_topics)
+    await callback.answer()
+
+
+@router.message(QuestionEdit.waiting_topics, F.text)
+async def save_topics(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    data = await state.get_data()
+    test_id, total = data["topics_test_id"], data["topics_total"]
+    text = message.text.strip()
+
+    if text == "0":
+        await set_question_topics(session, test_id, None)
+        result = "✅ Bo'limlar o'chirildi (sertifikatda bo'limlar ko'rsatilmaydi)."
+    else:
+        orders = parse_order_ranges(text, total)
+        if orders is None:
+            await message.answer(
+                f"❗️ Format noto'g'ri. 1 dan {total} gacha raqamlarni shunday yozing: 25-30, 33-35, 41-45",
+                reply_markup=cancel_inline_keyboard(),
+            )
+            return
+        await set_question_topics(session, test_id, orders)
+        result = (
+            f"✅ Saqlandi: {len(orders)} ta savol GEOMETRIYA, "
+            f"{total - len(orders)} ta savol ALGEBRA. Sertifikatlarda bo'limlar bo'yicha ball chiqadi."
+        )
+    await state.clear()
+    await message.answer(result, reply_markup=edit_menu_keyboard(test_id))
 
 
 # ================= Savol qo'shish =================
