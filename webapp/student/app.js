@@ -47,25 +47,82 @@
   }
   const buzz = (t) => { if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(t); };
 
-  /* ------------------------------ matematik klaviatura ------------------------------ */
-  const KEYS = [
-    ["7", "8", "9", "√(", "∛(", "π"],
-    ["4", "5", "6", "(", ")", "^"],
-    ["1", "2", "3", "+", "-", "*"],
-    ["0", ".", "/", ",", "⌫", "✕"],
+  /* ------------------------------ ilmiy klaviatura (kalkulyator) ------------------------------ */
+  const SCI = [
+    ["(", ")", "mc", "m+", "m-", "mr"],
+    ["2nd", "x²", "x³", "xʸ", "eˣ", "10ˣ"],
+    ["1/x", "²√x", "³√x", "ʸ√x", "ln", "log₁₀"],
+    ["x!", "sin", "cos", "tg", "e", "EE"],
+    ["Rand", "sh", "ch", "th", "π", "Rad"],
+    ["°", ";", "ctg", "|x|", "^", "x⁻¹"],
   ];
+  const MAIN = [
+    ["⌫", "AC", "%", "÷"],
+    ["7", "8", "9", "×"],
+    ["4", "5", "6", "−"],
+    ["1", "2", "3", "+"],
+    ["±", "0", ",", "="],
+  ];
+  const kp = { second: false, deg: false, mem: null, sci: window.innerHeight >= 780 };
   let kpTarget = null;
   let kpOpen = false;
 
+  const FN_KEYS = { sin: "sin", cos: "cos", tg: "tg", sh: "sh", ch: "ch", th: "th" };
+  const INV = { sin: "asin", cos: "acos", tg: "atan", sh: "asinh", ch: "acosh", th: "atanh" };
+  const INV_LABEL = { sin: "sin⁻¹", cos: "cos⁻¹", tg: "tg⁻¹", sh: "sh⁻¹", ch: "ch⁻¹", th: "th⁻¹" };
+  const TRIG = ["sin", "cos", "tg"];
+
+  function keyLabel(k) {
+    if (kp.second && INV_LABEL[k]) return INV_LABEL[k];
+    if (kp.second && k === "eˣ") return "2ˣ";
+    if (kp.second && k === "ln") return "log₂";
+    if (k === "Rad") return kp.deg ? "Deg" : "Rad";
+    return k;
+  }
+  // Tugma bosilganda kiritiladigan matn (null -- maxsus amal)
+  function keyInsert(k) {
+    const map = {
+      "÷": "/", "×": "*", "−": "-", "x²": "^2", "x³": "^3", "xʸ": "^(", "10ˣ": "10^(", "1/x": "1/(",
+      "²√x": "√(", "³√x": "∛(", "ʸ√x": "root(", "log₁₀": "log10(", "x!": "!", "EE": "E", "|x|": "abs(", "x⁻¹": "^(-1)",
+    };
+    if (k === "eˣ") return kp.second ? "2^(" : "e^(";
+    if (k === "ln") return kp.second ? "log2(" : "ln(";
+    if (k === "ctg") return kp.deg ? "ctgd(" : "ctg(";
+    if (FN_KEYS[k]) {
+      const base = kp.second ? INV[k] : k;
+      const withDeg = kp.deg && (TRIG.includes(k)) ? base + "d" : base;
+      return withDeg + "(";
+    }
+    if (k === "Rand") return String(Math.round(Math.random() * 10000) / 10000);
+    if (map[k]) return map[k];
+    if (["2nd", "Rad", "AC", "⌫", "±", "=", "mc", "m+", "m-", "mr"].includes(k)) return null;
+    return k;
+  }
+
   function buildKeypad() {
-    keypad.innerHTML = `<div class="grid">${KEYS.flat().map((k) => {
-      const cls = k === "✕" ? "close" : ("√(∛(π^⌫".includes(k) ? "fn" : "");
-      return `<button type="button" class="${cls}" data-k="${esc(k)}">${esc(k)}</button>`;
+    const grid = (rows, cols, cls) => `<div class="grid ${cls}" style="grid-template-columns:repeat(${cols},1fr)">${rows.flat().map((k) => {
+      let c = "";
+      if (k === "=" || k === "÷" || k === "×" || k === "−" || k === "+") c = "op";
+      else if (["⌫", "AC", "%", "±"].includes(k)) c = "gray";
+      else if (/^[0-9,]$/.test(k)) c = "digit";
+      else c = "fn";
+      if (k === "2nd" && kp.second) c += " active";
+      if (k === "mr" && kp.mem !== null) c += " active";
+      if (k === "Rad" && kp.deg) c += " active";
+      return `<button type="button" class="${c}" data-k="${esc(k)}">${esc(keyLabel(k))}</button>`;
     }).join("")}</div>`;
+    keypad.innerHTML = `
+      <div class="kp-head">
+        <button type="button" class="kp-fx" data-k="__sci">${kp.sci ? "🔬 Ilmiy: yoqilgan" : "🔬 Ilmiy tugmalar"}</button>
+        <span class="kp-mode">${kp.deg ? "Deg (gradus)" : "Rad (radian)"}${kp.mem !== null ? " · M" : ""}</span>
+        <button type="button" class="kp-close" data-k="__close">✕ Yopish</button>
+      </div>
+      <div class="kp-scroll">${kp.sci ? grid(SCI, 6, "sci") : ""}${grid(MAIN, 4, "main")}</div>`;
     keypad.querySelectorAll("button").forEach((b) => {
       b.addEventListener("pointerdown", (e) => e.preventDefault());
       b.addEventListener("click", () => pressKey(b.dataset.k));
     });
+    if (kpOpen) document.body.style.paddingBottom = keypad.offsetHeight + 24 + "px";
   }
   function setNativeKb(on) {
     document.querySelectorAll(".open-input").forEach((i) => i.setAttribute("inputmode", on ? "text" : "none"));
@@ -74,28 +131,64 @@
     kpTarget = input; kpOpen = true;
     keypad.hidden = false; setNativeKb(false);
     input.focus();
-    document.body.style.paddingBottom = "420px";
+    document.body.style.paddingBottom = keypad.offsetHeight + 24 + "px";
     input.scrollIntoView({ block: "center", behavior: "smooth" });
   }
   function closeKeypad() {
     kpOpen = false; keypad.hidden = true; setNativeKb(true);
     document.body.style.paddingBottom = "";
   }
-  function pressKey(k) {
-    if (k === "✕") { closeKeypad(); if (kpTarget) kpTarget.blur(); return; }
-    if (!kpTarget) return;
-    const el = kpTarget;
+  function fmtNum(v) { return String(Number(v.toPrecision(12))); }
+  function rowOf(el) { const r = el.closest(".qrow"); return r ? Number(r.dataset.order) : null; }
+
+  function insertText(el, text) {
     const s = el.selectionStart == null ? el.value.length : el.selectionStart;
     const e = el.selectionEnd == null ? el.value.length : el.selectionEnd;
-    if (k === "⌫") {
-      if (s !== e) el.value = el.value.slice(0, s) + el.value.slice(e);
-      else if (s > 0) { el.value = el.value.slice(0, s - 1) + el.value.slice(s); el.setSelectionRange(s - 1, s - 1); return el.dispatchEvent(new Event("input")); }
-      el.setSelectionRange(s, s);
-    } else {
-      el.value = el.value.slice(0, s) + k + el.value.slice(e);
-      el.setSelectionRange(s + k.length, s + k.length);
-    }
+    el.value = el.value.slice(0, s) + text + el.value.slice(e);
+    el.setSelectionRange(s + text.length, s + text.length);
     el.dispatchEvent(new Event("input"));
+  }
+
+  function pressKey(k) {
+    if (k === "__close") { closeKeypad(); if (kpTarget) kpTarget.blur(); return; }
+    if (k === "__sci") { kp.sci = !kp.sci; buildKeypad(); return; }
+    if (k === "2nd") { kp.second = !kp.second; buildKeypad(); return; }
+    if (k === "Rad") { kp.deg = !kp.deg; buildKeypad(); return; }
+    if (!kpTarget) return;
+    const el = kpTarget;
+    const order = rowOf(el);
+
+    if (k === "AC") { el.value = ""; el.dispatchEvent(new Event("input")); return; }
+    if (k === "⌫") {
+      const s = el.selectionStart == null ? el.value.length : el.selectionStart;
+      const e = el.selectionEnd == null ? el.value.length : el.selectionEnd;
+      if (s !== e) el.value = el.value.slice(0, s) + el.value.slice(e);
+      else if (s > 0) { el.value = el.value.slice(0, s - 1) + el.value.slice(s); el.setSelectionRange(s - 1, s - 1); }
+      el.dispatchEvent(new Event("input"));
+      return;
+    }
+    if (k === "±") {
+      el.value = el.value.startsWith("-") ? el.value.slice(1) : "-" + el.value;
+      el.dispatchEvent(new Event("input"));
+      return;
+    }
+    if (k === "=" || k === "m+" || k === "m-") {
+      const v = window.evalMath(el.value);
+      if (v === null) { if (!setHint(order, "❌ Ifoda hisoblanmadi", "err")) toast("Ifoda hisoblanmadi"); return; }
+      if (k === "=") { setHint(order, "= " + fmtNum(v), "calc"); return; }
+      kp.mem = (kp.mem || 0) + (k === "m+" ? v : -v);
+      setHint(order, "M = " + fmtNum(kp.mem), "calc");
+      buildKeypad();
+      return;
+    }
+    if (k === "mc") { kp.mem = null; setHint(order, "Xotira tozalandi", "calc"); buildKeypad(); return; }
+    if (k === "mr") {
+      if (kp.mem === null) { toast("Xotira bo'sh"); return; }
+      insertText(el, kp.mem < 0 ? `(${fmtNum(kp.mem)})` : fmtNum(kp.mem));
+      return;
+    }
+    const text = keyInsert(k);
+    if (text !== null) insertText(el, text);
   }
   buildKeypad();
 

@@ -153,16 +153,28 @@ main { max-width: 720px; margin: 0 auto; }
 /* ---- klaviatura ---- */
 #keypad {
   position: fixed; left: 0; right: 0; bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px));
-  background: var(--card); border-top: 1px solid var(--border); padding: 8px; z-index: 40;
-  box-shadow: 0 -6px 18px rgba(0,0,0,.12);
+  background: var(--card); border-top: 1px solid var(--border); z-index: 40;
+  box-shadow: 0 -6px 18px rgba(0,0,0,.14); display: flex; flex-direction: column; max-height: 62vh;
 }
-#keypad .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; max-width: 720px; margin: 0 auto; }
-#keypad button {
-  height: 42px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg);
-  color: var(--text); font-size: 17px; font-weight: 600; cursor: pointer;
+#keypad .kp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+#keypad .kp-head button { border: none; border-radius: 10px; padding: 7px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+#keypad .kp-fx { background: var(--accent-soft); color: var(--accent); }
+#keypad .kp-close { background: var(--err); color: #fff; }
+#keypad .kp-mode { font-size: 11px; color: var(--muted); font-weight: 600; }
+#keypad .kp-scroll { overflow-y: auto; padding: 8px; -webkit-overflow-scrolling: touch; }
+#keypad .grid { display: grid; gap: 6px; max-width: 720px; margin: 0 auto 6px; }
+#keypad .grid button {
+  height: 42px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg);
+  color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer; padding: 0;
 }
-#keypad button.fn { background: var(--accent-soft); color: var(--accent); }
-#keypad button.close { background: var(--err); color: #fff; border-color: var(--err); }
+#keypad .grid.main button { height: 46px; font-size: 19px; border-radius: 14px; }
+#keypad .grid button.digit { background: var(--card); }
+#keypad .grid button.fn { background: var(--accent-soft); color: var(--accent); font-size: 14px; }
+#keypad .grid button.gray { background: #e3e6ee; color: #111; }
+:root[data-theme="dark"] #keypad .grid button.gray { background: #3a3d48; color: #fff; }
+#keypad .grid button.op { background: #ff9500; border-color: #ff9500; color: #fff; font-weight: 700; }
+#keypad .grid button.active { outline: 2px solid var(--accent); background: var(--accent); color: #fff; }
+#keypad .grid button:active { transform: scale(.95); }
 
 /* ---- pastki menyu ---- */
 #tabbar {
@@ -200,3 +212,4 @@ main { max-width: 720px; margin: 0 auto; }
 .rad .ri { font-size: .6em; align-self: flex-start; margin-right: -3px; }
 .op { margin: 0 2px; color: var(--muted); }
 .preview sup { font-size: .65em; }
+.hint.calc { color: var(--accent); font-weight: 700; font-size: 13px; }
