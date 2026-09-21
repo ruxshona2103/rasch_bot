@@ -35,7 +35,7 @@ from core.answer_key import is_valid_numeric_answer, normalize_open_answer
 from core.marketing import announce_new_test
 from core.telegram_media import document_to_photo_file_id, is_image_document
 from db.models import Question, Test
-from db.queries import add_question, count_questions, create_test, get_test, set_test_pdf_file
+from db.queries import set_part_labels, add_question, count_questions, create_test, get_test, set_test_pdf_file
 
 router = Router(name="admin_test_create")
 router.message.filter(IsAdmin())
@@ -68,7 +68,7 @@ async def process_title(message: Message, state: FSMContext) -> None:
 async def process_closed_count(message: Message, state: FSMContext) -> None:
     await state.update_data(closed_count=int(message.text))
     await message.answer(
-        "Ochiq savollar soni (raqamli javob), masalan: 10",
+        "Ochiq javob maydonlari soni (raqamli), masalan: 10\n(Har savolda a) va b) qism bo'lsa, ikki barobar yozing: 10 ta savol → 20)",
         reply_markup=back_cancel_keyboard("tcback:closed_count"),
     )
     await state.set_state(TestCreate.waiting_open_count)
@@ -162,7 +162,7 @@ async def back_to_closed_count(callback: CallbackQuery, state: FSMContext) -> No
 async def back_to_open_count(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(
-        "Ochiq savollar soni (raqamli javob), masalan: 10",
+        "Ochiq javob maydonlari soni (raqamli), masalan: 10\n(Har savolda a) va b) qism bo'lsa, ikki barobar yozing: 10 ta savol → 20)",
         reply_markup=back_cancel_keyboard("tcback:closed_count"),
     )
     await state.set_state(TestCreate.waiting_open_count)
@@ -285,6 +285,15 @@ async def process_pdf_invalid(message: Message) -> None:
     )
 
 
+def _part_label(data: dict, order_num: int) -> str:
+    """Ochiq maydonlar juft bo'lsa, ular a/b qism: 36a, 36b, 37a ..."""
+    closed, opened = data["closed_count"], data["open_count"]
+    if order_num > closed and opened > 0 and opened % 2 == 0:
+        k = order_num - closed - 1
+        return f"{closed + k // 2 + 1}{'ab'[k % 2]}"
+    return str(order_num)
+
+
 async def _ask_pdf_answer(message: Message, state: FSMContext) -> None:
     """Navbatdagi savol uchun faqat to'g'ri javobni so'raydi (matn/rasm
     qayta kiritilmaydi — hammasi PDF faylning o'zida bor). 1..closed_count
@@ -302,7 +311,7 @@ async def _ask_pdf_answer(message: Message, state: FSMContext) -> None:
         )
     else:
         await message.answer(
-            f"{order_num}/{total} — to'g'ri javobni yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
+            f"{_part_label(data, order_num)} javobi ({order_num}/{total}) — to'g'ri javobni yozing (masalan: 12, 0.5|1/2, √2, sqrt(5), 2*pi):",
             reply_markup=cancel_inline_keyboard(),
         )
     await state.set_state(TestCreate.waiting_pdf_answer)
@@ -354,10 +363,12 @@ async def _save_pdf_answer(
         correct_answer=answer,
         option_count=data.get("opt_count", 4) if data["pdf_current_qtype"] == "yopiq" else 4,
     )
-    await message.answer(f"✅ {order_num}-savol saqlandi.")
+    await message.answer(f"✅ {_part_label(data, order_num)} saqlandi.")
     await state.update_data(pdf_order=order_num + 1)
 
     if order_num >= total:
+        if data["open_count"] > 0 and data["open_count"] % 2 == 0:
+            await set_part_labels(session, data["test_id"], data["closed_count"] + 1)
         await message.answer(
             f"✅ Jami {total} savol saqlandi.",
             reply_markup=yes_no_keyboard("finalconfirm:yes", "finalconfirm:no"),
